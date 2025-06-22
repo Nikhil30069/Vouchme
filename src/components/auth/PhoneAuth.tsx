@@ -4,6 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Phone, Shield } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 interface PhoneAuthProps {
   onPhoneVerified: (phone: string) => void;
@@ -14,14 +16,37 @@ export const PhoneAuth = ({ onPhoneVerified }: PhoneAuthProps) => {
   const [otp, setOtp] = useState('');
   const [step, setStep] = useState<'phone' | 'otp'>('phone');
   const [isLoading, setIsLoading] = useState(false);
+  const { toast } = useToast();
 
   const handleSendOTP = async () => {
     if (!phone) return;
     
     setIsLoading(true);
-    // Simulate OTP sending delay
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    setStep('otp');
+    try {
+      const { error } = await supabase.auth.signInWithOtp({
+        phone: phone,
+      });
+
+      if (error) {
+        toast({
+          title: "Error",
+          description: error.message,
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "OTP Sent",
+          description: "Please check your phone for the verification code.",
+        });
+        setStep('otp');
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to send OTP. Please try again.",
+        variant: "destructive",
+      });
+    }
     setIsLoading(false);
   };
 
@@ -29,9 +54,33 @@ export const PhoneAuth = ({ onPhoneVerified }: PhoneAuthProps) => {
     if (!otp) return;
     
     setIsLoading(true);
-    // Simulate OTP verification delay
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    onPhoneVerified(phone);
+    try {
+      const { error } = await supabase.auth.verifyOtp({
+        phone: phone,
+        token: otp,
+        type: 'sms'
+      });
+
+      if (error) {
+        toast({
+          title: "Error",
+          description: error.message,
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Success",
+          description: "Phone number verified successfully!",
+        });
+        onPhoneVerified(phone);
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to verify OTP. Please try again.",
+        variant: "destructive",
+      });
+    }
     setIsLoading(false);
   };
 

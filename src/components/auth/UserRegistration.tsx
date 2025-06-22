@@ -6,6 +6,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { UserPlus } from "lucide-react";
 import { useAuthStore } from "@/stores/authStore";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 interface UserRegistrationProps {
   phoneNumber: string;
@@ -23,22 +25,74 @@ export const UserRegistration = ({ phoneNumber }: UserRegistrationProps) => {
     }
   });
   
+  const [isLoading, setIsLoading] = useState(false);
   const { login } = useAuthStore();
+  const { toast } = useToast();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsLoading(true);
     
-    const user = {
-      id: Date.now().toString(),
-      name: formData.name,
-      phone: phoneNumber,
-      email: formData.email,
-      persona: formData.persona as 'seeker' | 'recruiter' | 'referrer',
-      workExperience: formData.persona === 'referrer' ? formData.workExperience : undefined,
-      createdAt: new Date()
-    };
-    
-    login(user);
+    try {
+      // Get the current user
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      
+      if (userError || !user) {
+        toast({
+          title: "Error",
+          description: "User authentication failed. Please try again.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Update the user profile in Supabase
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .upsert({
+          id: user.id,
+          name: formData.name,
+          phone: phoneNumber,
+          email: formData.email,
+          persona: formData.persona,
+          work_experience: formData.persona === 'referrer' ? formData.workExperience : null,
+        });
+
+      if (profileError) {
+        toast({
+          title: "Error",
+          description: profileError.message,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Create the user object for the store
+      const userObj = {
+        id: user.id,
+        name: formData.name,
+        phone: phoneNumber,
+        email: formData.email,
+        persona: formData.persona as 'seeker' | 'recruiter' | 'referrer',
+        workExperience: formData.persona === 'referrer' ? formData.workExperience : undefined,
+        createdAt: new Date()
+      };
+      
+      login(userObj);
+      
+      toast({
+        title: "Success",
+        description: "Profile created successfully!",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to create profile. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -156,9 +210,9 @@ export const UserRegistration = ({ phoneNumber }: UserRegistrationProps) => {
           <Button 
             type="submit" 
             className="w-full h-12 bg-blue-600 hover:bg-blue-700 text-white font-medium mt-6"
-            disabled={!formData.name || !formData.email || !formData.persona}
+            disabled={!formData.name || !formData.email || !formData.persona || isLoading}
           >
-            Create Account
+            {isLoading ? 'Creating Account...' : 'Create Account'}
           </Button>
         </form>
       </CardContent>
