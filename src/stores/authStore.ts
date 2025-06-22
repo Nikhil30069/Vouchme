@@ -57,8 +57,8 @@ export const useAuthStore = create<AuthState>()(
               name: profile.name || '',
               phone: profile.phone || '',
               email: profile.email || '',
-              persona: profile.persona || 'seeker',
-              workExperience: profile.work_experience,
+              persona: (profile.persona as 'seeker' | 'recruiter' | 'referrer') || 'seeker',
+              workExperience: profile.work_experience as { role: string; years: number; organization: string; } | undefined,
               createdAt: new Date(profile.created_at)
             };
             set({ user, isAuthenticated: true });
