@@ -2,13 +2,16 @@
 import { useState } from "react";
 import { PhoneAuth } from "./PhoneAuth";
 import { UserRegistration } from "./UserRegistration";
+import { useAuthStore } from "@/stores/authStore";
 
 export const AuthFlow = () => {
   const [step, setStep] = useState<'phone' | 'register'>('phone');
   const [phoneNumber, setPhoneNumber] = useState('');
+  const { setTempPhone } = useAuthStore();
 
   const handlePhoneVerified = (phone: string) => {
     setPhoneNumber(phone);
+    setTempPhone(phone);
     setStep('register');
   };
 

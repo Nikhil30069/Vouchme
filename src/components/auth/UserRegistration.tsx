@@ -5,8 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { UserPlus } from "lucide-react";
-import { useAuthStore } from "@/stores/authStore";
-import { supabase } from "@/integrations/supabase/client";
+import { useAuthStore, User } from "@/stores/authStore";
 import { useToast } from "@/hooks/use-toast";
 
 interface UserRegistrationProps {
@@ -34,42 +33,12 @@ export const UserRegistration = ({ phoneNumber }: UserRegistrationProps) => {
     setIsLoading(true);
     
     try {
-      // Get the current user
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      // Generate a simple ID for the user
+      const userId = crypto.randomUUID();
       
-      if (userError || !user) {
-        toast({
-          title: "Error",
-          description: "User authentication failed. Please try again.",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      // Update the user profile in Supabase
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .upsert({
-          id: user.id,
-          name: formData.name,
-          phone: phoneNumber,
-          email: formData.email,
-          persona: formData.persona,
-          work_experience: formData.persona === 'referrer' ? formData.workExperience : null,
-        });
-
-      if (profileError) {
-        toast({
-          title: "Error",
-          description: profileError.message,
-          variant: "destructive",
-        });
-        return;
-      }
-
       // Create the user object for the store
-      const userObj = {
-        id: user.id,
+      const userObj: User = {
+        id: userId,
         name: formData.name,
         phone: phoneNumber,
         email: formData.email,
