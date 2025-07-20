@@ -1,4 +1,5 @@
-import { useState } from "react";
+"use client";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -37,8 +38,38 @@ export const UserRegistration = ({ phoneNumber }: UserRegistrationProps) => {
   });
 
   const [isLoading, setIsLoading] = useState(false);
+  const [isChecking, setIsChecking] = useState(true);
   const { login } = useAuthStore();
   const { toast } = useToast();
+
+  // 🔍 Check if user is already registered
+  useEffect(() => {
+    const checkProfile = async () => {
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser();
+
+      if (authError || !user) {
+        setIsChecking(false);
+        return;
+      }
+
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", user.id)
+        .single();
+
+      if (!profileError && profile) {
+        login(profile);
+      } else {
+        setIsChecking(false); // No profile found, show form
+      }
+    };
+
+    checkProfile();
+  }, [login]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -59,10 +90,10 @@ export const UserRegistration = ({ phoneNumber }: UserRegistrationProps) => {
         name: formData.name,
         phone: phoneNumber,
         email: formData.email,
-        persona: formData.persona as "seeker" | "recruiter" | "referrer",
+        persona: formData.persona,
         workExperience:
           formData.persona === "referrer" ? formData.workExperience : undefined,
-        createdAt: new Date()
+        createdAt: `${new Date()}`,
       };
 
       const { error: insertError } = await supabase
@@ -77,6 +108,7 @@ export const UserRegistration = ({ phoneNumber }: UserRegistrationProps) => {
         title: "Success",
         description: "Profile created successfully!",
       });
+
     } catch (error) {
       toast({
         title: "Error",
@@ -87,6 +119,8 @@ export const UserRegistration = ({ phoneNumber }: UserRegistrationProps) => {
       setIsLoading(false);
     }
   };
+
+  if (isChecking) return null; // 🕵️ Don't show form while checking
 
   return (
     <Card className="shadow-2xl border-0 bg-white/80 backdrop-blur-sm">

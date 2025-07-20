@@ -1,4 +1,5 @@
 
+import { Json } from '@/integrations/supabase/types';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
@@ -7,13 +8,9 @@ export interface User {
   name: string;
   phone: string;
   email: string;
-  persona: 'seeker' | 'recruiter' | 'referrer';
-  workExperience?: {
-    role: string;
-    years: number;
-    organization: string;
-  };
-  createdAt: Date;
+  persona: string;
+  workExperience?: Json | null;
+  createdAt: string;
 }
 
 interface AuthState {

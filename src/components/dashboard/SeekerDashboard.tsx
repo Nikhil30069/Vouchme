@@ -7,6 +7,8 @@ import { Plus, Briefcase, TrendingUp, Clock } from "lucide-react";
 import { User } from "@/stores/authStore";
 import { useJobStore } from "@/stores/jobStore";
 import { JobRequirementForm } from "./JobRequirementForm";
+import { useEffect } from "react";
+import { supabase } from "@/integrations/supabase/client";
 
 interface SeekerDashboardProps {
   user: User;
@@ -17,6 +19,23 @@ export const SeekerDashboard = ({ user }: SeekerDashboardProps) => {
   const { getJobsByUser } = useJobStore();
   
   const userJobs = getJobsByUser(user.id);
+  useEffect(() => {
+    const fetchJobs = async () => {
+      const { data, error } = await supabase
+        .from("job_requirements")
+        .select("*")
+        .eq("userId", user.id)
+        .order("createdAt", { ascending: false });
+
+      if (!error && data) {
+        useJobStore.getState().setJobsForUser(user.id, data);
+      }
+    };
+
+    if (user?.id) {
+      fetchJobs();
+    }
+  }, [user?.id]);
 
   if (showForm) {
     return (
@@ -115,10 +134,10 @@ export const SeekerDashboard = ({ user }: SeekerDashboardProps) => {
                   </div>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm text-gray-600">
                     <div>
-                      <span className="font-medium">Current CTC:</span> ₹{job.currentCTC?.toLocaleString()}
+                      <span className="font-medium">Current CTC:</span> ₹{job.currentCtc?.toLocaleString()}
                     </div>
                     <div>
-                      <span className="font-medium">Expected CTC:</span> ₹{job.expectedCTC?.toLocaleString()}
+                      <span className="font-medium">Expected CTC:</span> ₹{job.expectedCtc?.toLocaleString()}
                     </div>
                     <div>
                       <span className="font-medium">Notice Period:</span> {job.noticePeriod} days

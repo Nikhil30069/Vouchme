@@ -18,7 +18,7 @@ import { supabase } from "@/integrations/supabase/client";
 
 interface JobRequirementFormProps {
   user: User;
-  type: "seeker" | "recruiter";
+  type: "seeker" | "recruiter" | "referrer" | "";
   onClose: () => void;
 }
 
@@ -30,8 +30,8 @@ export const JobRequirementForm = ({
   const [formData, setFormData] = useState({
     role: "",
     yearsOfExperience: "",
-    currentCTC: "",
-    expectedCTC: "",
+    currentCtc: "",
+    expectedCtc: "",
     salaryBracketMin: "",
     salaryBracketMax: "",
     noticePeriod: "",
@@ -81,8 +81,8 @@ export const JobRequirementForm = ({
 
       if (type === "seeker") {
         Object.assign(jobData, {
-          currentCtc: parseInt(formData.currentCTC),
-          expectedCtc: parseInt(formData.expectedCTC),
+          currentCtc: parseInt(formData.currentCtc),
+          expectedCtc: parseInt(formData.expectedCtc),
           noticePeriod: parseInt(formData.noticePeriod),
           resumeUrl: uploadedResumeUrl,
         });
@@ -173,12 +173,12 @@ export const JobRequirementForm = ({
               <>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="currentCTC">Current CTC (₹)</Label>
+                    <Label htmlFor="currentCtc">Current CTC (₹)</Label>
                     <Input
                       type="number"
-                      value={formData.currentCTC}
+                      value={formData.currentCtc}
                       onChange={(e) =>
-                        handleInputChange("currentCTC", e.target.value)
+                        handleInputChange("currentCtc", e.target.value)
                       }
                       placeholder="e.g., 800000"
                       required
@@ -186,12 +186,12 @@ export const JobRequirementForm = ({
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="expectedCTC">Expected CTC (₹)</Label>
+                    <Label htmlFor="expectedCtc">Expected CTC (₹)</Label>
                     <Input
                       type="number"
-                      value={formData.expectedCTC}
+                      value={formData.expectedCtc}
                       onChange={(e) =>
-                        handleInputChange("expectedCTC", e.target.value)
+                        handleInputChange("expectedCtc", e.target.value)
                       }
                       placeholder="e.g., 1200000"
                       required

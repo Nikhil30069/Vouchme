@@ -136,7 +136,7 @@ export const ReferrerDashboard = ({ user }: ReferrerDashboardProps) => {
                         <div className="flex items-center space-x-4 mt-2">
                           <Badge variant="outline">{profile.yearsOfExperience} years exp</Badge>
                           <span className="text-sm text-gray-600">
-                            Expected CTC: ₹{profile.expectedCTC?.toLocaleString()}
+                            Expected CTC: ₹{profile.expectedCtc?.toLocaleString()}
                           </span>
                           <span className="text-sm text-gray-600">
                             Notice: {profile.noticePeriod} days
