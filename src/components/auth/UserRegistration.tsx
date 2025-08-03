@@ -1,12 +1,25 @@
-
-import { useState } from "react";
+"use client";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { UserPlus } from "lucide-react";
 import { useAuthStore, User } from "@/stores/authStore";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 interface UserRegistrationProps {
   phoneNumber: string;
@@ -14,45 +27,88 @@ interface UserRegistrationProps {
 
 export const UserRegistration = ({ phoneNumber }: UserRegistrationProps) => {
   const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    persona: '' as 'seeker' | 'recruiter' | 'referrer' | '',
+    name: "",
+    email: "",
+    persona: "" as "seeker" | "recruiter" | "referrer" | "",
     workExperience: {
-      role: '',
+      role: "",
       years: 0,
-      organization: ''
-    }
+      organization: "",
+    },
   });
-  
+
   const [isLoading, setIsLoading] = useState(false);
+  const [isChecking, setIsChecking] = useState(true);
   const { login } = useAuthStore();
   const { toast } = useToast();
+
+  // 🔍 Check if user is already registered
+  useEffect(() => {
+    const checkProfile = async () => {
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser();
+
+      if (authError || !user) {
+        setIsChecking(false);
+        return;
+      }
+
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", user.id)
+        .single();
+
+      if (!profileError && profile) {
+        login(profile);
+      } else {
+        setIsChecking(false); // No profile found, show form
+      }
+    };
+
+    checkProfile();
+  }, [login]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    
+
     try {
-      // Generate a simple ID for the user
-      const userId = crypto.randomUUID();
-      
-      // Create the user object for the store
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        throw new Error("User not authenticated");
+      }
+
       const userObj: User = {
-        id: userId,
+        id: user.id,
         name: formData.name,
         phone: phoneNumber,
         email: formData.email,
-        persona: formData.persona as 'seeker' | 'recruiter' | 'referrer',
-        workExperience: formData.persona === 'referrer' ? formData.workExperience : undefined,
-        createdAt: new Date()
+        persona: formData.persona,
+        workExperience:
+          formData.persona === "referrer" ? formData.workExperience : undefined,
+        createdAt: `${new Date()}`,
       };
-      
+
+      const { error: insertError } = await supabase
+        .from("profiles")
+        .insert([userObj]);
+
+      if (insertError) throw insertError;
+
       login(userObj);
-      
+
       toast({
         title: "Success",
         description: "Profile created successfully!",
       });
+
     } catch (error) {
       toast({
         title: "Error",
@@ -64,13 +120,17 @@ export const UserRegistration = ({ phoneNumber }: UserRegistrationProps) => {
     }
   };
 
+  if (isChecking) return null; // 🕵️ Don't show form while checking
+
   return (
     <Card className="shadow-2xl border-0 bg-white/80 backdrop-blur-sm">
       <CardHeader className="text-center pb-6">
         <div className="mx-auto w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-4">
           <UserPlus className="w-8 h-8 text-blue-600" />
         </div>
-        <CardTitle className="text-2xl font-bold text-gray-900">Create Your Profile</CardTitle>
+        <CardTitle className="text-2xl font-bold text-gray-900">
+          Create Your Profile
+        </CardTitle>
         <CardDescription className="text-gray-600">
           Tell us about yourself to get started
         </CardDescription>
@@ -78,24 +138,32 @@ export const UserRegistration = ({ phoneNumber }: UserRegistrationProps) => {
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-700">Full Name</label>
+            <label className="text-sm font-medium text-gray-700">
+              Full Name
+            </label>
             <Input
               type="text"
               placeholder="Enter your full name"
               value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              onChange={(e) =>
+                setFormData({ ...formData, name: e.target.value })
+              }
               required
               className="h-11"
             />
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-700">Email Address</label>
+            <label className="text-sm font-medium text-gray-700">
+              Email Address
+            </label>
             <Input
               type="email"
               placeholder="Enter your email"
               value={formData.email}
-              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+              onChange={(e) =>
+                setFormData({ ...formData, email: e.target.value })
+              }
               required
               className="h-11"
             />
@@ -103,9 +171,12 @@ export const UserRegistration = ({ phoneNumber }: UserRegistrationProps) => {
 
           <div className="space-y-2">
             <label className="text-sm font-medium text-gray-700">I am a</label>
-            <Select value={formData.persona} onValueChange={(value: 'seeker' | 'recruiter' | 'referrer') => 
-              setFormData({ ...formData, persona: value })
-            }>
+            <Select
+              value={formData.persona}
+              onValueChange={(value: "seeker" | "recruiter" | "referrer") =>
+                setFormData({ ...formData, persona: value })
+              }
+            >
               <SelectTrigger className="h-11">
                 <SelectValue placeholder="Select your role" />
               </SelectTrigger>
@@ -117,40 +188,56 @@ export const UserRegistration = ({ phoneNumber }: UserRegistrationProps) => {
             </Select>
           </div>
 
-          {formData.persona === 'referrer' && (
+          {formData.persona === "referrer" && (
             <div className="space-y-4 p-4 bg-blue-50 rounded-lg">
-              <h3 className="font-medium text-gray-900">Work Experience Details</h3>
-              
+              <h3 className="font-medium text-gray-900">
+                Work Experience Details
+              </h3>
+
               <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700">Role</label>
-                <Select value={formData.workExperience.role} onValueChange={(value) => 
-                  setFormData({ 
-                    ...formData, 
-                    workExperience: { ...formData.workExperience, role: value }
-                  })
-                }>
+                <label className="text-sm font-medium text-gray-700">
+                  Role
+                </label>
+                <Select
+                  value={formData.workExperience.role}
+                  onValueChange={(value) =>
+                    setFormData({
+                      ...formData,
+                      workExperience: {
+                        ...formData.workExperience,
+                        role: value,
+                      },
+                    })
+                  }
+                >
                   <SelectTrigger className="h-11">
                     <SelectValue placeholder="Select your role" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="software-developer">Software Developer</SelectItem>
+                    <SelectItem value="software-developer">
+                      Software Developer
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700">Years of Experience</label>
+                <label className="text-sm font-medium text-gray-700">
+                  Years of Experience
+                </label>
                 <Input
                   type="number"
                   placeholder="Enter years of experience"
                   value={formData.workExperience.years}
-                  onChange={(e) => setFormData({ 
-                    ...formData, 
-                    workExperience: { 
-                      ...formData.workExperience, 
-                      years: parseInt(e.target.value) || 0 
-                    }
-                  })}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      workExperience: {
+                        ...formData.workExperience,
+                        years: parseInt(e.target.value) || 0,
+                      },
+                    })
+                  }
                   min="0"
                   max="50"
                   className="h-11"
@@ -158,30 +245,39 @@ export const UserRegistration = ({ phoneNumber }: UserRegistrationProps) => {
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700">Organization</label>
+                <label className="text-sm font-medium text-gray-700">
+                  Organization
+                </label>
                 <Input
                   type="text"
                   placeholder="Enter your organization"
                   value={formData.workExperience.organization}
-                  onChange={(e) => setFormData({ 
-                    ...formData, 
-                    workExperience: { 
-                      ...formData.workExperience, 
-                      organization: e.target.value 
-                    }
-                  })}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      workExperience: {
+                        ...formData.workExperience,
+                        organization: e.target.value,
+                      },
+                    })
+                  }
                   className="h-11"
                 />
               </div>
             </div>
           )}
 
-          <Button 
-            type="submit" 
+          <Button
+            type="submit"
             className="w-full h-12 bg-blue-600 hover:bg-blue-700 text-white font-medium mt-6"
-            disabled={!formData.name || !formData.email || !formData.persona || isLoading}
+            disabled={
+              !formData.name ||
+              !formData.email ||
+              !formData.persona ||
+              isLoading
+            }
           >
-            {isLoading ? 'Creating Account...' : 'Create Account'}
+            {isLoading ? "Creating Account..." : "Create Account"}
           </Button>
         </form>
       </CardContent>

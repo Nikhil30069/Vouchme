@@ -64,14 +64,14 @@ export const CandidateMatching = ({ onClose }: CandidateMatchingProps) => {
                       </div>
 
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm text-gray-600 mb-4">
-                        {candidate.currentCTC && (
+                        {candidate.currentCtc && (
                           <div>
-                            <span className="font-medium">Current CTC:</span> ₹{candidate.currentCTC.toLocaleString()}
+                            <span className="font-medium">Current CTC:</span> ₹{candidate.currentCtc.toLocaleString()}
                           </div>
                         )}
-                        {candidate.expectedCTC && (
+                        {candidate.expectedCtc && (
                           <div>
-                            <span className="font-medium">Expected CTC:</span> ₹{candidate.expectedCTC.toLocaleString()}
+                            <span className="font-medium">Expected CTC:</span> ₹{candidate.expectedCtc.toLocaleString()}
                           </div>
                         )}
                         {candidate.noticePeriod && (
