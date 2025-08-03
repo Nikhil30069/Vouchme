@@ -7,43 +7,339 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instanciate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "12.2.3 (519615d)"
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
   }
   public: {
     Tables: {
+      candidate_matches: {
+        Row: {
+          created_at: string | null
+          id: string
+          is_interested: boolean
+          job_posting_id: string
+          phone_unlocked: boolean
+          recruiter_id: string
+          seeker_id: string
+          strength_score: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          is_interested?: boolean
+          job_posting_id: string
+          phone_unlocked?: boolean
+          recruiter_id: string
+          seeker_id: string
+          strength_score?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          is_interested?: boolean
+          job_posting_id?: string
+          phone_unlocked?: boolean
+          recruiter_id?: string
+          seeker_id?: string
+          strength_score?: number | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "candidate_matches_job_posting_id_fkey"
+            columns: ["job_posting_id"]
+            isOneToOne: false
+            referencedRelation: "job_postings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "candidate_matches_recruiter_id_fkey"
+            columns: ["recruiter_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "candidate_matches_seeker_id_fkey"
+            columns: ["seeker_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      job_postings: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          id: string
+          is_active: boolean
+          recruiter_id: string
+          requirements: string[] | null
+          role: string
+          salary_max: number | null
+          salary_min: number | null
+          title: string
+          updated_at: string | null
+          years_of_experience: number
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          recruiter_id: string
+          requirements?: string[] | null
+          role: string
+          salary_max?: number | null
+          salary_min?: number | null
+          title: string
+          updated_at?: string | null
+          years_of_experience: number
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          recruiter_id?: string
+          requirements?: string[] | null
+          role?: string
+          salary_max?: number | null
+          salary_min?: number | null
+          title?: string
+          updated_at?: string | null
+          years_of_experience?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "job_postings_recruiter_id_fkey"
+            columns: ["recruiter_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           created_at: string | null
+          current_organization: string | null
           email: string | null
           id: string
           name: string | null
+          organizations: string[] | null
           persona: string | null
           phone: string | null
+          total_experience_years: number | null
           updated_at: string | null
           work_experience: Json | null
         }
         Insert: {
           created_at?: string | null
+          current_organization?: string | null
           email?: string | null
           id: string
           name?: string | null
+          organizations?: string[] | null
           persona?: string | null
           phone?: string | null
+          total_experience_years?: number | null
           updated_at?: string | null
           work_experience?: Json | null
         }
         Update: {
           created_at?: string | null
+          current_organization?: string | null
           email?: string | null
           id?: string
           name?: string | null
+          organizations?: string[] | null
           persona?: string | null
           phone?: string | null
+          total_experience_years?: number | null
           updated_at?: string | null
           work_experience?: Json | null
+        }
+        Relationships: []
+      }
+      referral_requests: {
+        Row: {
+          created_at: string | null
+          id: string
+          job_requirement_id: string | null
+          job_role: string
+          referrer_id: string
+          seeker_experience_years: number
+          seeker_id: string
+          status: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          job_requirement_id?: string | null
+          job_role: string
+          referrer_id: string
+          seeker_experience_years: number
+          seeker_id: string
+          status?: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          job_requirement_id?: string | null
+          job_role?: string
+          referrer_id?: string
+          seeker_experience_years?: number
+          seeker_id?: string
+          status?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "referral_requests_job_requirement_id_fkey"
+            columns: ["job_requirement_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "referral_requests_referrer_id_fkey"
+            columns: ["referrer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "referral_requests_seeker_id_fkey"
+            columns: ["seeker_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      scores: {
+        Row: {
+          comments: string | null
+          created_at: string | null
+          id: string
+          parameter_id: string
+          referral_request_id: string
+          referrer_id: string
+          score: number
+          seeker_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          comments?: string | null
+          created_at?: string | null
+          id?: string
+          parameter_id: string
+          referral_request_id: string
+          referrer_id: string
+          score: number
+          seeker_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          comments?: string | null
+          created_at?: string | null
+          id?: string
+          parameter_id?: string
+          referral_request_id?: string
+          referrer_id?: string
+          score?: number
+          seeker_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scores_parameter_id_fkey"
+            columns: ["parameter_id"]
+            isOneToOne: false
+            referencedRelation: "scoring_parameters"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scores_referral_request_id_fkey"
+            columns: ["referral_request_id"]
+            isOneToOne: false
+            referencedRelation: "referral_requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scores_referrer_id_fkey"
+            columns: ["referrer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scores_seeker_id_fkey"
+            columns: ["seeker_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      scoring_parameters: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          id: string
+          is_active: boolean
+          max_score: number
+          name: string
+          updated_at: string | null
+          weight: number
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          max_score?: number
+          name: string
+          updated_at?: string | null
+          weight?: number
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          max_score?: number
+          name?: string
+          updated_at?: string | null
+          weight?: number
         }
         Relationships: []
       }
@@ -52,7 +348,44 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      calculate_strength_score: {
+        Args: { seeker_uuid: string }
+        Returns: number
+      }
+      find_eligible_referrers: {
+        Args: { seeker_experience: number; seeker_role: string }
+        Returns: {
+          organization: string
+          referrer_experience: number
+          referrer_role: string
+          referrer_name: string
+          referrer_id: string
+        }[]
+      }
+      find_eligible_referrers_for_job: {
+        Args: { job_requirement_uuid: string }
+        Returns: {
+          total_experience_years: number
+          referrer_experience: number
+          organization: string
+          current_organization: string
+          organizations: string[]
+          referrer_id: string
+          referrer_name: string
+          referrer_role: string
+        }[]
+      }
+      get_top_candidates: {
+        Args: { job_posting_uuid: string; limit_count?: number }
+        Returns: {
+          seeker_role: string
+          seeker_name: string
+          total_scores: number
+          strength_score: number
+          seeker_id: string
+          seeker_experience: number
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never
@@ -181,7 +514,11 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {},
   },
 } as const
+

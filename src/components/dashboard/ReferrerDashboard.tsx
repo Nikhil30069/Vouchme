@@ -1,34 +1,143 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Star, Users, Award, FileText } from "lucide-react";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Star, Users, Award, FileText, CheckCircle, Clock, AlertCircle } from "lucide-react";
 import { User } from "@/stores/authStore";
-import { useJobStore } from "@/stores/jobStore";
+import { useReferralStore } from "@/stores/referralStore";
+import { toast } from "sonner";
 
 interface ReferrerDashboardProps {
   user: User;
 }
 
 export const ReferrerDashboard = ({ user }: ReferrerDashboardProps) => {
-  const { getProfilesByRole, addScore } = useJobStore();
-  const [scores, setScores] = useState<Record<string, number>>({});
-  
-  const eligibleProfiles = user.workExperience 
-    ? getProfilesByRole(user.workExperience.role, user.workExperience.years)
-    : [];
+  const { 
+    fetchReferralRequests, 
+    fetchScoringParameters, 
+    createScore,
+    referralRequests,
+    scoringParameters,
+    loading 
+  } = useReferralStore();
 
-  const handleScoreChange = (profileId: string, score: number) => {
-    setScores(prev => ({ ...prev, [profileId]: score }));
+  const [scores, setScores] = useState<Record<string, Record<string, number>>>({});
+  const [comments, setComments] = useState<Record<string, string>>({});
+  const [submittingScores, setSubmittingScores] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    fetchReferralRequests(user.id);
+    fetchScoringParameters();
+  }, [user.id, fetchReferralRequests, fetchScoringParameters]);
+
+  // Filter requests for this referrer
+  const myReferralRequests = referralRequests.filter(req => req.referrer_id === user.id);
+  const pendingRequests = myReferralRequests.filter(req => req.status === 'pending');
+  const scoredRequests = myReferralRequests.filter(req => req.status === 'scored');
+
+  const handleScoreChange = (requestId: string, parameterId: string, score: number) => {
+    setScores(prev => ({
+      ...prev,
+      [requestId]: {
+        ...prev[requestId],
+        [parameterId]: score
+      }
+    }));
   };
 
-  const handleSubmitScore = (profileId: string) => {
-    const score = scores[profileId];
-    if (score >= 1 && score <= 10) {
-      addScore(profileId, user.id, user.name, score);
-      setScores(prev => ({ ...prev, [profileId]: 0 }));
+  const handleCommentChange = (requestId: string, comment: string) => {
+    setComments(prev => ({
+      ...prev,
+      [requestId]: comment
+    }));
+  };
+
+  const handleSubmitScore = async (requestId: string) => {
+    const requestScores = scores[requestId];
+    if (!requestScores || Object.keys(requestScores).length === 0) {
+      toast.error("Please provide scores for all parameters");
+      return;
+    }
+
+    // Validate all parameters have scores
+    const missingParameters = scoringParameters.filter(param => !requestScores[param.id]);
+    if (missingParameters.length > 0) {
+      toast.error(`Please provide scores for: ${missingParameters.map(p => p.name).join(', ')}`);
+      return;
+    }
+
+    setSubmittingScores(prev => new Set(prev).add(requestId));
+
+    try {
+      const request = myReferralRequests.find(req => req.id === requestId);
+      if (!request) {
+        toast.error("Referral request not found");
+        return;
+      }
+
+      // Create scores for all parameters
+      const scorePromises = Object.entries(requestScores).map(([parameterId, score]) =>
+        createScore({
+          referral_request_id: requestId,
+          referrer_id: user.id,
+          seeker_id: request.seeker_id,
+          parameter_id: parameterId,
+          score: score,
+          comments: comments[requestId] || undefined
+        })
+      );
+
+      await Promise.all(scorePromises);
+      toast.success("Scores submitted successfully!");
+      
+      // Clear form data
+      setScores(prev => {
+        const newScores = { ...prev };
+        delete newScores[requestId];
+        return newScores;
+      });
+      setComments(prev => {
+        const newComments = { ...prev };
+        delete newComments[requestId];
+        return newComments;
+      });
+
+      // Refresh data
+      await fetchReferralRequests(user.id);
+    } catch (error) {
+      toast.error("Failed to submit scores. Please try again.");
+    } finally {
+      setSubmittingScores(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(requestId);
+        return newSet;
+      });
+    }
+  };
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'pending':
+        return <Clock className="w-4 h-4 text-yellow-600" />;
+      case 'scored':
+        return <CheckCircle className="w-4 h-4 text-green-600" />;
+      default:
+        return <AlertCircle className="w-4 h-4 text-gray-600" />;
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'pending':
+        return 'bg-yellow-100 text-yellow-800';
+      case 'scored':
+        return 'bg-green-100 text-green-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
     }
   };
 
@@ -57,8 +166,8 @@ export const ReferrerDashboard = ({ user }: ReferrerDashboardProps) => {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">Profiles to Review</p>
-                <p className="text-2xl font-bold text-gray-900">{eligibleProfiles.length}</p>
+                <p className="text-sm text-gray-600">Pending Reviews</p>
+                <p className="text-2xl font-bold text-gray-900">{pendingRequests.length}</p>
               </div>
               <div className="bg-purple-100 p-3 rounded-full">
                 <Users className="w-6 h-6 text-purple-600" />
@@ -71,12 +180,8 @@ export const ReferrerDashboard = ({ user }: ReferrerDashboardProps) => {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">Reviews Given</p>
-                <p className="text-2xl font-bold text-gray-900">
-                  {eligibleProfiles.reduce((sum, profile) => 
-                    sum + profile.scores.filter(s => s.referrerId === user.id).length, 0
-                  )}
-                </p>
+                <p className="text-sm text-gray-600">Reviews Completed</p>
+                <p className="text-2xl font-bold text-gray-900">{scoredRequests.length}</p>
               </div>
               <div className="bg-yellow-100 p-3 rounded-full">
                 <Award className="w-6 h-6 text-yellow-600" />
@@ -89,15 +194,8 @@ export const ReferrerDashboard = ({ user }: ReferrerDashboardProps) => {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">Average Score Given</p>
-                <p className="text-2xl font-bold text-gray-900">
-                  {(() => {
-                    const allScores = eligibleProfiles.flatMap(profile => 
-                      profile.scores.filter(s => s.referrerId === user.id).map(s => s.score)
-                    );
-                    return allScores.length ? (allScores.reduce((a, b) => a + b, 0) / allScores.length).toFixed(1) : '0';
-                  })()}
-                </p>
+                <p className="text-sm text-gray-600">Total Requests</p>
+                <p className="text-2xl font-bold text-gray-900">{myReferralRequests.length}</p>
               </div>
               <div className="bg-blue-100 p-3 rounded-full">
                 <Star className="w-6 h-6 text-blue-600" />
@@ -107,98 +205,140 @@ export const ReferrerDashboard = ({ user }: ReferrerDashboardProps) => {
         </Card>
       </div>
 
-      {/* Profiles to Review */}
+      {/* Referral Requests */}
       <Card>
         <CardHeader>
-          <CardTitle>Candidate Profiles to Review</CardTitle>
+          <CardTitle>Referral Requests to Review</CardTitle>
           <CardDescription>
-            Review profiles from candidates with {user.workExperience?.role} role and ≤{user.workExperience?.years} years experience
+            Review and score candidate profiles that match your expertise
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {eligibleProfiles.length === 0 ? (
+          {myReferralRequests.length === 0 ? (
             <div className="text-center py-12">
               <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">No profiles to review</h3>
-              <p className="text-gray-500">Candidates matching your criteria will appear here</p>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">No referral requests yet</h3>
+              <p className="text-gray-500">Candidates will send you referral requests based on your experience level</p>
             </div>
           ) : (
             <div className="space-y-6">
-              {eligibleProfiles.map((profile) => {
-                const existingScore = profile.scores.find(s => s.referrerId === user.id);
-                const currentScore = scores[profile.id] || existingScore?.score || 0;
-
-                return (
-                  <div key={profile.id} className="p-6 border rounded-lg bg-white shadow-sm">
-                    <div className="flex justify-between items-start mb-4">
-                      <div>
-                        <h3 className="text-lg font-medium text-gray-900">{profile.role}</h3>
-                        <div className="flex items-center space-x-4 mt-2">
-                          <Badge variant="outline">{profile.yearsOfExperience} years exp</Badge>
-                          <span className="text-sm text-gray-600">
-                            Expected CTC: ₹{profile.expectedCTC?.toLocaleString()}
-                          </span>
-                          <span className="text-sm text-gray-600">
-                            Notice: {profile.noticePeriod} days
-                          </span>
+              {myReferralRequests.map((request) => (
+                <div key={request.id} className="p-6 border rounded-lg bg-white shadow-sm">
+                  <div className="flex justify-between items-start mb-4">
+                    <div>
+                                          <div className="flex items-center space-x-3 mb-2">
+                      <h3 className="text-lg font-medium text-gray-900">{request.job_role}</h3>
+                      <Badge variant="outline">{request.seeker_experience_years} years exp</Badge>
+                      <Badge className={getStatusColor(request.status)}>
+                        <div className="flex items-center space-x-1">
+                          {getStatusIcon(request.status)}
+                          <span className="capitalize">{request.status}</span>
                         </div>
-                      </div>
-                      
-                      {profile.scores.length > 0 && (
-                        <div className="text-right">
-                          <p className="text-sm text-gray-600">Average Score</p>
-                          <div className="flex items-center">
-                            <Star className="w-4 h-4 text-yellow-500 mr-1" />
-                            <span className="font-medium">
-                              {(profile.scores.reduce((sum, s) => sum + s.score, 0) / profile.scores.length).toFixed(1)}
-                            </span>
-                          </div>
-                        </div>
-                      )}
+                      </Badge>
                     </div>
 
-                    {profile.resumeUrl && (
-                      <div className="mb-4">
-                        <Button variant="outline" size="sm">
-                          <FileText className="w-4 h-4 mr-2" />
-                          View Resume
-                        </Button>
-                      </div>
-                    )}
+                      <p className="text-sm text-gray-600">
+                        Requested on {new Date(request.created_at).toLocaleDateString()}
+                      </p>
+                    </div>
+                  </div>
 
-                    <div className="flex items-center space-x-4">
-                      <div className="flex items-center space-x-2">
-                        <label className="text-sm font-medium text-gray-700">Your Score (1-10):</label>
-                        <Input
-                          type="number"
-                          min="1"
-                          max="10"
-                          value={currentScore || ''}
-                          onChange={(e) => handleScoreChange(profile.id, parseInt(e.target.value) || 0)}
-                          className="w-20"
-                          placeholder="0"
+                  {request.status === 'pending' && (
+                    <div className="space-y-4">
+                      <div>
+                        <h4 className="font-medium text-gray-900 mb-3">Score the candidate:</h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {scoringParameters.map((parameter) => (
+                            <div key={parameter.id} className="space-y-2">
+                              <Label htmlFor={`score-${request.id}-${parameter.id}`}>
+                                {parameter.name} (1-{parameter.max_score})
+                              </Label>
+                              <Input
+                                id={`score-${request.id}-${parameter.id}`}
+                                type="number"
+                                min="1"
+                                max={parameter.max_score}
+                                value={scores[request.id]?.[parameter.id] || ''}
+                                onChange={(e) => handleScoreChange(
+                                  request.id, 
+                                  parameter.id, 
+                                  parseInt(e.target.value) || 0
+                                )}
+                                placeholder={`1-${parameter.max_score}`}
+                                className="w-full"
+                              />
+                              {parameter.description && (
+                                <p className="text-xs text-gray-500">{parameter.description}</p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div>
+                        <Label htmlFor={`comment-${request.id}`}>Comments (Optional)</Label>
+                        <Textarea
+                          id={`comment-${request.id}`}
+                          value={comments[request.id] || ''}
+                          onChange={(e) => handleCommentChange(request.id, e.target.value)}
+                          placeholder="Add any additional comments or feedback..."
+                          className="mt-1"
+                          rows={3}
                         />
                       </div>
-                      
+
                       <Button
-                        onClick={() => handleSubmitScore(profile.id)}
-                        disabled={!scores[profile.id] || scores[profile.id] < 1 || scores[profile.id] > 10}
-                        size="sm"
+                        onClick={() => handleSubmitScore(request.id)}
+                        disabled={submittingScores.has(request.id)}
+                        className="w-full"
                       >
-                        {existingScore ? 'Update Score' : 'Submit Score'}
+                        {submittingScores.has(request.id) ? (
+                          <>
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                            Submitting...
+                          </>
+                        ) : (
+                          <>
+                            <Star className="w-4 h-4 mr-2" />
+                            Submit Scores
+                          </>
+                        )}
                       </Button>
                     </div>
+                  )}
 
-                    {existingScore && (
-                      <p className="text-sm text-green-600 mt-2">
-                        You previously scored this profile: {existingScore.score}/10
+                  {request.status === 'scored' && (
+                    <div className="bg-green-50 p-4 rounded-lg">
+                      <div className="flex items-center space-x-2">
+                        <CheckCircle className="w-5 h-5 text-green-600" />
+                        <span className="text-green-800 font-medium">Scores submitted successfully</span>
+                      </div>
+                      <p className="text-green-700 text-sm mt-1">
+                        Thank you for helping this candidate improve their profile!
                       </p>
-                    )}
-                  </div>
-                );
-              })}
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Info Card */}
+      <Card className="bg-purple-50 border-purple-200">
+        <CardContent className="p-4">
+          <div className="flex items-start space-x-3">
+            <Award className="w-5 h-5 text-purple-600 mt-0.5 flex-shrink-0" />
+            <div>
+              <h4 className="font-medium text-purple-900 mb-2">Your Impact</h4>
+              <p className="text-sm text-purple-800">
+                By scoring candidates, you're helping them build their professional reputation and 
+                increase their visibility to recruiters. Your expertise and feedback are invaluable 
+                to their career growth.
+              </p>
+            </div>
+          </div>
         </CardContent>
       </Card>
     </div>

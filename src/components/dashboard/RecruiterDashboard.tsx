@@ -1,13 +1,15 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Users, Search, Calendar } from "lucide-react";
+import { Plus, Users, Search, Calendar, Briefcase, TrendingUp } from "lucide-react";
 import { User } from "@/stores/authStore";
 import { useJobStore } from "@/stores/jobStore";
+import { useReferralStore } from "@/stores/referralStore";
 import { JobRequirementForm } from "./JobRequirementForm";
-import { CandidateMatching } from "./CandidateMatching";
+import { TopCandidates } from "./TopCandidates";
+import { JobPostingForm } from "./JobPostingForm";
 
 interface RecruiterDashboardProps {
   user: User;
@@ -15,10 +17,18 @@ interface RecruiterDashboardProps {
 
 export const RecruiterDashboard = ({ user }: RecruiterDashboardProps) => {
   const [showForm, setShowForm] = useState(false);
-  const [showMatching, setShowMatching] = useState(false);
+  const [showJobPostingForm, setShowJobPostingForm] = useState(false);
+  const [showTopCandidates, setShowTopCandidates] = useState(false);
+  const [selectedJobPostingId, setSelectedJobPostingId] = useState<string | null>(null);
+  
   const { getJobsByUser } = useJobStore();
+  const { fetchJobPostings, jobPostings } = useReferralStore();
   
   const userJobs = getJobsByUser(user.id);
+
+  useEffect(() => {
+    fetchJobPostings(user.id);
+  }, [user.id, fetchJobPostings]);
 
   if (showForm) {
     return (
@@ -30,10 +40,29 @@ export const RecruiterDashboard = ({ user }: RecruiterDashboardProps) => {
     );
   }
 
-  if (showMatching) {
+  if (showJobPostingForm) {
     return (
-      <CandidateMatching 
-        onClose={() => setShowMatching(false)} 
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold">Create Job Posting</h1>
+          <Button variant="outline" onClick={() => setShowJobPostingForm(false)}>
+            Back to Dashboard
+          </Button>
+        </div>
+        <JobPostingForm user={user} onClose={() => setShowJobPostingForm(false)} />
+      </div>
+    );
+  }
+
+  if (showTopCandidates && selectedJobPostingId) {
+    return (
+      <TopCandidates 
+        user={user} 
+        jobPostingId={selectedJobPostingId}
+        onClose={() => {
+          setShowTopCandidates(false);
+          setSelectedJobPostingId(null);
+        }} 
       />
     );
   }
@@ -46,34 +75,50 @@ export const RecruiterDashboard = ({ user }: RecruiterDashboardProps) => {
         <p className="text-green-100 mb-6">Find the perfect candidates for your team</p>
         <div className="flex flex-wrap gap-4">
           <Button 
-            onClick={() => setShowForm(true)}
+            onClick={() => setShowJobPostingForm(true)}
             className="bg-white text-green-600 hover:bg-green-50"
           >
             <Plus className="w-4 h-4 mr-2" />
-            Post Job Requirement
+            Create Job Posting
           </Button>
           <Button 
-            onClick={() => setShowMatching(true)}
+            onClick={() => setShowForm(true)}
             variant="outline"
             className="border-white text-white hover:bg-white hover:text-green-600"
           >
-            <Search className="w-4 h-4 mr-2" />
-            Find Candidates
+            <Briefcase className="w-4 h-4 mr-2" />
+            Post Job Requirement
           </Button>
         </div>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600">Job Postings</p>
-                <p className="text-2xl font-bold text-gray-900">{userJobs.length}</p>
+                <p className="text-2xl font-bold text-gray-900">{jobPostings.length}</p>
               </div>
               <div className="bg-green-100 p-3 rounded-full">
-                <Users className="w-6 h-6 text-green-600" />
+                <Briefcase className="w-6 h-6 text-green-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600">Active Postings</p>
+                <p className="text-2xl font-bold text-gray-900">
+                  {jobPostings.filter(job => job.is_active).length}
+                </p>
+              </div>
+              <div className="bg-blue-100 p-3 rounded-full">
+                <TrendingUp className="w-6 h-6 text-blue-600" />
               </div>
             </div>
           </CardContent>
@@ -86,8 +131,8 @@ export const RecruiterDashboard = ({ user }: RecruiterDashboardProps) => {
                 <p className="text-sm text-gray-600">Candidates Found</p>
                 <p className="text-2xl font-bold text-gray-900">0</p>
               </div>
-              <div className="bg-blue-100 p-3 rounded-full">
-                <Search className="w-6 h-6 text-blue-600" />
+              <div className="bg-purple-100 p-3 rounded-full">
+                <Users className="w-6 h-6 text-purple-600" />
               </div>
             </div>
           </CardContent>
@@ -100,25 +145,102 @@ export const RecruiterDashboard = ({ user }: RecruiterDashboardProps) => {
                 <p className="text-sm text-gray-600">Interviews Scheduled</p>
                 <p className="text-2xl font-bold text-gray-900">0</p>
               </div>
-              <div className="bg-purple-100 p-3 rounded-full">
-                <Calendar className="w-6 h-6 text-purple-600" />
+              <div className="bg-yellow-100 p-3 rounded-full">
+                <Calendar className="w-6 h-6 text-yellow-600" />
               </div>
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Job Requirements History */}
+      {/* Job Postings */}
       <Card>
         <CardHeader>
           <CardTitle>Your Job Postings</CardTitle>
+          <CardDescription>Manage your job postings and find top candidates</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {jobPostings.length === 0 ? (
+            <div className="text-center py-12">
+              <Briefcase className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 mb-2">No job postings yet</h3>
+              <p className="text-gray-500 mb-4">Start by creating your first job posting to find candidates</p>
+              <Button onClick={() => setShowJobPostingForm(true)}>
+                <Plus className="w-4 h-4 mr-2" />
+                Create Job Posting
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {jobPostings.map((job) => (
+                <div key={job.id} className="p-4 border rounded-lg hover:bg-gray-50 transition-colors">
+                  <div className="flex justify-between items-start mb-2">
+                    <div>
+                      <h3 className="font-medium text-gray-900">{job.title}</h3>
+                      <p className="text-sm text-gray-600">{job.role}</p>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Badge variant="outline">{job.years_of_experience}+ years exp</Badge>
+                      <Badge variant={job.is_active ? "default" : "secondary"}>
+                        {job.is_active ? "Active" : "Inactive"}
+                      </Badge>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm text-gray-600 mb-4">
+                    <div>
+                      <span className="font-medium">Salary Range:</span> 
+                      {job.salary_min && job.salary_max 
+                        ? ` ₹${job.salary_min.toLocaleString()} - ₹${job.salary_max.toLocaleString()}`
+                        : " Not specified"
+                      }
+                    </div>
+                    <div>
+                      <span className="font-medium">Posted:</span> {new Date(job.created_at).toLocaleDateString()}
+                    </div>
+                    <div>
+                      <span className="font-medium">Requirements:</span> {job.requirements?.length || 0} items
+                    </div>
+                    <div>
+                      <span className="font-medium">Status:</span> {job.is_active ? "Active" : "Inactive"}
+                    </div>
+                  </div>
+                  <div className="flex items-center space-x-3">
+                    <Button
+                      onClick={() => {
+                        setSelectedJobPostingId(job.id);
+                        setShowTopCandidates(true);
+                      }}
+                      size="sm"
+                      className="bg-blue-600 hover:bg-blue-700"
+                    >
+                      <Search className="w-4 h-4 mr-2" />
+                      Find Top Candidates
+                    </Button>
+                    <Button variant="outline" size="sm">
+                      Edit Posting
+                    </Button>
+                    <Button variant="outline" size="sm">
+                      {job.is_active ? "Deactivate" : "Activate"}
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Job Requirements History */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Your Job Requirements</CardTitle>
           <CardDescription>Manage your job requirements and track applications</CardDescription>
         </CardHeader>
         <CardContent>
           {userJobs.length === 0 ? (
             <div className="text-center py-12">
               <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">No job postings yet</h3>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">No job requirements yet</h3>
               <p className="text-gray-500 mb-4">Start by posting your first job requirement</p>
               <Button onClick={() => setShowForm(true)}>
                 <Plus className="w-4 h-4 mr-2" />
