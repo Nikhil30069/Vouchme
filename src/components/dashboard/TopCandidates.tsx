@@ -42,7 +42,10 @@ export const TopCandidates = ({ user, jobPostingId, onClose }: TopCandidatesProp
 
   useEffect(() => {
     if (jobPostingId) {
+      console.log('TopCandidates: Fetching for job posting ID:', jobPostingId);
       getTopCandidates(jobPostingId);
+    } else {
+      console.error('TopCandidates: No job posting ID provided');
     }
   }, [jobPostingId, getTopCandidates]);
 
@@ -107,17 +110,39 @@ export const TopCandidates = ({ user, jobPostingId, onClose }: TopCandidatesProp
 
   if (error) {
     return (
-      <Card className="border-red-200 bg-red-50">
-        <CardContent className="p-6">
-          <div className="text-center">
-            <div className="text-red-600 mb-2">⚠️ Error</div>
-            <p className="text-red-700">{error}</p>
-            <Button onClick={() => jobPostingId && getTopCandidates(jobPostingId)} className="mt-4">
-              Try Again
-            </Button>
+      <div className="space-y-6">
+        {/* Header with Back Button */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900">Top Candidates</h2>
+            <p className="text-gray-600">Error occurred while fetching candidates</p>
           </div>
-        </CardContent>
-      </Card>
+          {onClose && (
+            <Button variant="outline" onClick={onClose}>
+              Back to Dashboard
+            </Button>
+          )}
+        </div>
+
+        <Card className="border-red-200 bg-red-50">
+          <CardContent className="p-6">
+            <div className="text-center">
+              <div className="text-red-600 mb-2">⚠️ Error</div>
+              <p className="text-red-700 mb-4">{error}</p>
+              <div className="flex justify-center space-x-3">
+                <Button onClick={() => jobPostingId && getTopCandidates(jobPostingId)} className="bg-blue-600 hover:bg-blue-700">
+                  Try Again
+                </Button>
+                {onClose && (
+                  <Button variant="outline" onClick={onClose}>
+                    Back to Dashboard
+                  </Button>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     );
   }
 

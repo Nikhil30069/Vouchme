@@ -82,6 +82,17 @@ interface ReferralState {
     requirements?: string[];
   }) => Promise<void>;
   
+  updateJobPosting: (jobId: string, data: {
+    is_active?: boolean;
+    title?: string;
+    role?: string;
+    years_of_experience?: number;
+    salary_min?: number;
+    salary_max?: number;
+    description?: string;
+    requirements?: string[];
+  }) => Promise<void>;
+  
   updateCandidateMatch: (seekerId: string, jobPostingId: string, data: {
     is_interested?: boolean;
     phone_unlocked?: boolean;
@@ -253,16 +264,43 @@ export const useReferralStore = create<ReferralState>((set, get) => ({
   getTopCandidates: async (jobPostingId: string) => {
     set({ loading: true, error: null });
     try {
+      console.log('Fetching top candidates for job posting:', jobPostingId);
+      
+      // Debug: Check if we have seekers with scores
+      const { data: debugSeekers, error: debugSeekersError } = await supabase
+        .rpc('debug_get_seekers_with_scores');
+      console.log('Debug - Seekers with scores:', { debugSeekers, debugSeekersError });
+
+      // Debug: Check job postings
+      const { data: debugJobs, error: debugJobsError } = await supabase
+        .rpc('debug_get_job_postings');
+      console.log('Debug - Job postings:', { debugJobs, debugJobsError });
+
+      // Debug: Check the debug version of top candidates
+      const { data: debugCandidates, error: debugCandidatesError } = await supabase
+        .rpc('debug_get_top_candidates', {
+          job_posting_uuid: jobPostingId
+        });
+      console.log('Debug - Top candidates (debug version):', { debugCandidates, debugCandidatesError });
+
       const { data, error } = await supabase
         .rpc('get_top_candidates', {
           job_posting_uuid: jobPostingId,
           limit_count: 3
         });
 
-      if (error) throw error;
+      console.log('Top candidates response:', { data, error });
+
+      if (error) {
+        console.error('Database error:', error);
+        throw error;
+      }
+      
       set({ topCandidates: data || [] });
     } catch (error) {
-      set({ error: error instanceof Error ? error.message : 'Failed to get top candidates' });
+      console.error('Failed to get top candidates:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to get top candidates';
+      set({ error: `Error: ${errorMessage}. Please check console for details.` });
     } finally {
       set({ loading: false });
     }
@@ -344,6 +382,29 @@ export const useReferralStore = create<ReferralState>((set, get) => ({
       await get().fetchJobPostings(data.recruiter_id);
     } catch (error) {
       set({ error: error instanceof Error ? error.message : 'Failed to create job posting' });
+    } finally {
+      set({ loading: false });
+    }
+  },
+
+  updateJobPosting: async (jobId: string, data) => {
+    set({ loading: true, error: null });
+    try {
+      const { error } = await supabase
+        .from('job_postings')
+        .update({ ...data, updated_at: new Date().toISOString() })
+        .eq('id', jobId);
+
+      if (error) throw error;
+      
+      // Update local state
+      const currentPostings = get().jobPostings;
+      const updatedPostings = currentPostings.map(job => 
+        job.id === jobId ? { ...job, ...data, updated_at: new Date().toISOString() } : job
+      );
+      set({ jobPostings: updatedPostings });
+    } catch (error) {
+      set({ error: error instanceof Error ? error.message : 'Failed to update job posting' });
     } finally {
       set({ loading: false });
     }

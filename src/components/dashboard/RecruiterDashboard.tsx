@@ -17,12 +17,27 @@ export const RecruiterDashboard = ({ user }: RecruiterDashboardProps) => {
   const [showJobPostingForm, setShowJobPostingForm] = useState(false);
   const [showTopCandidates, setShowTopCandidates] = useState(false);
   const [selectedJobPostingId, setSelectedJobPostingId] = useState<string | null>(null);
+  const [editingJobId, setEditingJobId] = useState<string | null>(null);
   
-  const { fetchJobPostings, jobPostings } = useReferralStore();
+  const { fetchJobPostings, jobPostings, updateJobPosting } = useReferralStore();
 
   useEffect(() => {
     fetchJobPostings(user.id);
   }, [user.id, fetchJobPostings]);
+
+  const handleToggleJobStatus = async (jobId: string, currentStatus: boolean) => {
+    try {
+      await updateJobPosting(jobId, { is_active: !currentStatus });
+      // State will be updated automatically by the updateJobPosting function
+    } catch (error) {
+      console.error('Failed to toggle job status:', error);
+    }
+  };
+
+  const handleEditJob = (jobId: string) => {
+    setEditingJobId(jobId);
+    setShowJobPostingForm(true);
+  };
 
 
 
@@ -194,10 +209,18 @@ export const RecruiterDashboard = ({ user }: RecruiterDashboardProps) => {
                       <Search className="w-4 h-4 mr-2" />
                       Find Top Candidates
                     </Button>
-                    <Button variant="outline" size="sm">
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => handleEditJob(job.id)}
+                    >
                       Edit Posting
                     </Button>
-                    <Button variant="outline" size="sm">
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => handleToggleJobStatus(job.id, job.is_active)}
+                    >
                       {job.is_active ? "Deactivate" : "Activate"}
                     </Button>
                   </div>

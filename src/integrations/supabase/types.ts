@@ -352,20 +352,55 @@ export type Database = {
         Args: { seeker_uuid: string }
         Returns: number
       }
+      debug_get_job_postings: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          job_title: string
+          job_role: string
+          salary_max: number
+          salary_min: number
+          min_experience: number
+          job_id: string
+        }[]
+      }
+      debug_get_seekers_with_scores: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          work_experience_json: Json
+          score_count: number
+          seeker_name: string
+          seeker_persona: string
+          seeker_id: string
+        }[]
+      }
+      debug_get_top_candidates: {
+        Args: { job_posting_uuid: string }
+        Returns: {
+          seeker_experience: number
+          seeker_name: string
+          seeker_id: string
+          seeker_role: string
+          score_count: number
+          job_min_exp: number
+          job_salary_min: number
+          current_ctc: number
+          expected_ctc: number
+          job_salary_max: number
+        }[]
+      }
       find_eligible_referrers: {
         Args: { seeker_experience: number; seeker_role: string }
         Returns: {
           referrer_role: string
           referrer_name: string
           referrer_id: string
-          organization: string
           referrer_experience: number
+          organization: string
         }[]
       }
       find_eligible_referrers_for_job: {
         Args: { job_requirement_uuid: string }
         Returns: {
-          current_organization: string
           referrer_id: string
           referrer_name: string
           referrer_role: string
@@ -373,15 +408,16 @@ export type Database = {
           organization: string
           total_experience_years: number
           organizations: string[]
+          current_organization: string
         }[]
       }
       get_top_candidates: {
         Args: { job_posting_uuid: string; limit_count?: number }
         Returns: {
           seeker_id: string
-          seeker_experience: number
-          seeker_role: string
           seeker_name: string
+          seeker_role: string
+          seeker_experience: number
           strength_score: number
           total_scores: number
           expected_ctc: number
