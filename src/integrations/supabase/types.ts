@@ -355,35 +355,37 @@ export type Database = {
       find_eligible_referrers: {
         Args: { seeker_experience: number; seeker_role: string }
         Returns: {
-          organization: string
-          referrer_experience: number
           referrer_role: string
           referrer_name: string
           referrer_id: string
+          organization: string
+          referrer_experience: number
         }[]
       }
       find_eligible_referrers_for_job: {
         Args: { job_requirement_uuid: string }
         Returns: {
-          total_experience_years: number
-          referrer_experience: number
-          organization: string
           current_organization: string
-          organizations: string[]
           referrer_id: string
           referrer_name: string
           referrer_role: string
+          referrer_experience: number
+          organization: string
+          total_experience_years: number
+          organizations: string[]
         }[]
       }
       get_top_candidates: {
         Args: { job_posting_uuid: string; limit_count?: number }
         Returns: {
-          seeker_role: string
-          seeker_name: string
-          total_scores: number
-          strength_score: number
           seeker_id: string
           seeker_experience: number
+          seeker_role: string
+          seeker_name: string
+          strength_score: number
+          total_scores: number
+          expected_ctc: number
+          current_ctc: number
         }[]
       }
     }

@@ -25,6 +25,8 @@ interface TopCandidate {
   seeker_experience: number;
   strength_score: number;
   total_scores: number;
+  expected_ctc: number;
+  current_ctc: number;
 }
 
 interface ReferralState {
@@ -80,10 +82,15 @@ interface ReferralState {
     requirements?: string[];
   }) => Promise<void>;
   
-  updateCandidateMatch: (matchId: string, data: {
+  updateCandidateMatch: (seekerId: string, jobPostingId: string, data: {
     is_interested?: boolean;
     phone_unlocked?: boolean;
   }) => Promise<void>;
+  
+  getCandidateContactDetails: (seekerId: string) => Promise<{
+    phone: string;
+    email: string;
+  } | null>;
   
   calculateStrengthScore: (seekerId: string) => Promise<number>;
   
@@ -342,22 +349,28 @@ export const useReferralStore = create<ReferralState>((set, get) => ({
     }
   },
 
-  updateCandidateMatch: async (matchId: string, data) => {
+  updateCandidateMatch: async (seekerId: string, jobPostingId: string, data: { is_interested?: boolean; phone_unlocked?: boolean }) => {
     set({ loading: true, error: null });
     try {
+      const user = (await supabase.auth.getUser()).data.user;
+      if (!user) throw new Error('User not authenticated');
+
+      // Upsert candidate match
       const { error } = await supabase
         .from('candidate_matches')
-        .update({ ...data, updated_at: new Date().toISOString() })
-        .eq('id', matchId);
+        .upsert({
+          seeker_id: seekerId,
+          job_posting_id: jobPostingId,
+          recruiter_id: user.id,
+          is_interested: data.is_interested || false,
+          phone_unlocked: data.phone_unlocked || false,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'seeker_id,job_posting_id,recruiter_id'
+        });
 
       if (error) throw error;
-      
-      // Refresh candidate matches
-      const currentMatches = get().candidateMatches;
-      const updatedMatches = currentMatches.map(match => 
-        match.id === matchId ? { ...match, ...data, updated_at: new Date().toISOString() } : match
-      );
-      set({ candidateMatches: updatedMatches });
     } catch (error) {
       set({ error: error instanceof Error ? error.message : 'Failed to update candidate match' });
     } finally {
@@ -377,6 +390,22 @@ export const useReferralStore = create<ReferralState>((set, get) => ({
     } catch (error) {
       console.error('Failed to calculate strength score:', error);
       return 0;
+    }
+  },
+
+  getCandidateContactDetails: async (seekerId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('phone, email')
+        .eq('id', seekerId)
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Failed to get candidate contact details:', error);
+      return null;
     }
   },
 

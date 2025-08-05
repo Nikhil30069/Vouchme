@@ -5,9 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Plus, Users, Search, Calendar, Briefcase, TrendingUp } from "lucide-react";
 import { User } from "@/stores/authStore";
-import { useJobStore } from "@/stores/jobStore";
 import { useReferralStore } from "@/stores/referralStore";
-import { JobRequirementForm } from "./JobRequirementForm";
 import { TopCandidates } from "./TopCandidates";
 import { JobPostingForm } from "./JobPostingForm";
 
@@ -16,29 +14,17 @@ interface RecruiterDashboardProps {
 }
 
 export const RecruiterDashboard = ({ user }: RecruiterDashboardProps) => {
-  const [showForm, setShowForm] = useState(false);
   const [showJobPostingForm, setShowJobPostingForm] = useState(false);
   const [showTopCandidates, setShowTopCandidates] = useState(false);
   const [selectedJobPostingId, setSelectedJobPostingId] = useState<string | null>(null);
   
-  const { getJobsByUser } = useJobStore();
   const { fetchJobPostings, jobPostings } = useReferralStore();
-  
-  const userJobs = getJobsByUser(user.id);
 
   useEffect(() => {
     fetchJobPostings(user.id);
   }, [user.id, fetchJobPostings]);
 
-  if (showForm) {
-    return (
-      <JobRequirementForm 
-        user={user} 
-        type="recruiter" 
-        onClose={() => setShowForm(false)} 
-      />
-    );
-  }
+
 
   if (showJobPostingForm) {
     return (
@@ -80,14 +66,6 @@ export const RecruiterDashboard = ({ user }: RecruiterDashboardProps) => {
           >
             <Plus className="w-4 h-4 mr-2" />
             Create Job Posting
-          </Button>
-          <Button 
-            onClick={() => setShowForm(true)}
-            variant="outline"
-            className="border-white text-white hover:bg-white hover:text-green-600"
-          >
-            <Briefcase className="w-4 h-4 mr-2" />
-            Post Job Requirement
           </Button>
         </div>
       </div>
@@ -230,48 +208,7 @@ export const RecruiterDashboard = ({ user }: RecruiterDashboardProps) => {
         </CardContent>
       </Card>
 
-      {/* Job Requirements History */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Your Job Requirements</CardTitle>
-          <CardDescription>Manage your job requirements and track applications</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {userJobs.length === 0 ? (
-            <div className="text-center py-12">
-              <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">No job requirements yet</h3>
-              <p className="text-gray-500 mb-4">Start by posting your first job requirement</p>
-              <Button onClick={() => setShowForm(true)}>
-                <Plus className="w-4 h-4 mr-2" />
-                Post Job Requirement
-              </Button>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {userJobs.map((job) => (
-                <div key={job.id} className="p-4 border rounded-lg hover:bg-gray-50 transition-colors">
-                  <div className="flex justify-between items-start mb-2">
-                    <h3 className="font-medium text-gray-900">{job.role}</h3>
-                    <Badge variant="outline">{job.yearsOfExperience}+ years exp</Badge>
-                  </div>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm text-gray-600">
-                    <div>
-                      <span className="font-medium">Salary Range:</span> ₹{job.salaryBracket?.min.toLocaleString()} - ₹{job.salaryBracket?.max.toLocaleString()}
-                    </div>
-                    <div>
-                      <span className="font-medium">Ready to join:</span> {job.readyToJoinIn} days
-                    </div>
-                    <div>
-                      <span className="font-medium">Posted:</span> {new Date(job.createdAt).toLocaleDateString()}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+
     </div>
   );
 };

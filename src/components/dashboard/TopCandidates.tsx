@@ -30,6 +30,7 @@ export const TopCandidates = ({ user, jobPostingId, onClose }: TopCandidatesProp
   const { 
     getTopCandidates, 
     updateCandidateMatch,
+    getCandidateContactDetails,
     topCandidates, 
     loading, 
     error 
@@ -37,6 +38,7 @@ export const TopCandidates = ({ user, jobPostingId, onClose }: TopCandidatesProp
 
   const [unlockedPhones, setUnlockedPhones] = useState<Set<string>>(new Set());
   const [interestedCandidates, setInterestedCandidates] = useState<Set<string>>(new Set());
+  const [contactDetails, setContactDetails] = useState<Record<string, { phone: string; email: string }>>({});
 
   useEffect(() => {
     if (jobPostingId) {
@@ -46,15 +48,13 @@ export const TopCandidates = ({ user, jobPostingId, onClose }: TopCandidatesProp
 
   const handleShowInterest = async (candidateId: string) => {
     try {
-      // Find the candidate match record
-      const candidate = topCandidates.find(c => c.seeker_id === candidateId);
-      if (!candidate) {
-        toast.error("Candidate not found");
+      if (!jobPostingId) {
+        toast.error("Job posting ID not available");
         return;
       }
 
       // Update the candidate match to show interest
-      await updateCandidateMatch(candidateId, { is_interested: true });
+      await updateCandidateMatch(candidateId, jobPostingId, { is_interested: true });
       
       setInterestedCandidates(prev => new Set(prev).add(candidateId));
       toast.success("Interest marked successfully!");
@@ -65,13 +65,26 @@ export const TopCandidates = ({ user, jobPostingId, onClose }: TopCandidatesProp
 
   const handleUnlockPhone = async (candidateId: string) => {
     try {
+      if (!jobPostingId) {
+        toast.error("Job posting ID not available");
+        return;
+      }
+
+      // Get candidate contact details
+      const details = await getCandidateContactDetails(candidateId);
+      if (!details) {
+        toast.error("Failed to get candidate contact details");
+        return;
+      }
+
       // Update the candidate match to unlock phone
-      await updateCandidateMatch(candidateId, { phone_unlocked: true });
+      await updateCandidateMatch(candidateId, jobPostingId, { phone_unlocked: true });
       
       setUnlockedPhones(prev => new Set(prev).add(candidateId));
-      toast.success("Phone number unlocked!");
+      setContactDetails(prev => ({ ...prev, [candidateId]: details }));
+      toast.success("Contact details unlocked!");
     } catch (error) {
-      toast.error("Failed to unlock phone number. Please try again.");
+      toast.error("Failed to unlock contact details. Please try again.");
     }
   };
 
@@ -181,6 +194,14 @@ export const TopCandidates = ({ user, jobPostingId, onClose }: TopCandidatesProp
                           <Star className="w-4 h-4" />
                           <span>{candidate.total_scores} reviews</span>
                         </div>
+                        <div className="flex items-center space-x-1">
+                          <span className="font-medium">Expected CTC:</span>
+                          <span>₹{candidate.expected_ctc?.toLocaleString() || 'Not specified'}</span>
+                        </div>
+                        <div className="flex items-center space-x-1">
+                          <span className="font-medium">Current CTC:</span>
+                          <span>₹{candidate.current_ctc?.toLocaleString() || 'Not specified'}</span>
+                        </div>
                       </div>
 
                       {/* Strength Score Display */}
@@ -225,15 +246,15 @@ export const TopCandidates = ({ user, jobPostingId, onClose }: TopCandidatesProp
                       </Button>
                     )}
 
-                    {isPhoneUnlocked && (
+                    {isPhoneUnlocked && contactDetails[candidate.seeker_id] && (
                       <div className="flex items-center space-x-4">
                         <Button variant="outline" className="text-green-600 border-green-600">
                           <Phone className="w-4 h-4 mr-2" />
-                          +91 98765 43210
+                          {contactDetails[candidate.seeker_id].phone}
                         </Button>
                         <Button variant="outline">
                           <Mail className="w-4 h-4 mr-2" />
-                          Contact via Email
+                          {contactDetails[candidate.seeker_id].email}
                         </Button>
                       </div>
                     )}
