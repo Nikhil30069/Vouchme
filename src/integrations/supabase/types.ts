@@ -355,45 +355,45 @@ export type Database = {
       debug_get_job_postings: {
         Args: Record<PropertyKey, never>
         Returns: {
+          job_id: string
           job_title: string
           job_role: string
-          salary_max: number
-          salary_min: number
           min_experience: number
-          job_id: string
+          salary_min: number
+          salary_max: number
         }[]
       }
       debug_get_seekers_with_scores: {
         Args: Record<PropertyKey, never>
         Returns: {
-          work_experience_json: Json
-          score_count: number
+          seeker_id: string
           seeker_name: string
           seeker_persona: string
-          seeker_id: string
+          work_experience_json: Json
+          score_count: number
         }[]
       }
       debug_get_top_candidates: {
         Args: { job_posting_uuid: string }
         Returns: {
-          seeker_experience: number
-          seeker_name: string
           seeker_id: string
+          seeker_name: string
           seeker_role: string
-          score_count: number
+          seeker_experience: number
+          expected_ctc: number
+          current_ctc: number
           job_min_exp: number
           job_salary_min: number
-          current_ctc: number
-          expected_ctc: number
           job_salary_max: number
+          score_count: number
         }[]
       }
       find_eligible_referrers: {
         Args: { seeker_experience: number; seeker_role: string }
         Returns: {
-          referrer_role: string
-          referrer_name: string
           referrer_id: string
+          referrer_name: string
+          referrer_role: string
           referrer_experience: number
           organization: string
         }[]
@@ -418,9 +418,9 @@ export type Database = {
           seeker_name: string
           seeker_role: string
           seeker_experience: number
-          strength_score: number
-          total_scores: number
           expected_ctc: number
+          total_scores: number
+          strength_score: number
           current_ctc: number
         }[]
       }

@@ -265,23 +265,6 @@ export const useReferralStore = create<ReferralState>((set, get) => ({
     set({ loading: true, error: null });
     try {
       console.log('Fetching top candidates for job posting:', jobPostingId);
-      
-      // Debug: Check if we have seekers with scores
-      const { data: debugSeekers, error: debugSeekersError } = await supabase
-        .rpc('debug_get_seekers_with_scores');
-      console.log('Debug - Seekers with scores:', { debugSeekers, debugSeekersError });
-
-      // Debug: Check job postings
-      const { data: debugJobs, error: debugJobsError } = await supabase
-        .rpc('debug_get_job_postings');
-      console.log('Debug - Job postings:', { debugJobs, debugJobsError });
-
-      // Debug: Check the debug version of top candidates
-      const { data: debugCandidates, error: debugCandidatesError } = await supabase
-        .rpc('debug_get_top_candidates', {
-          job_posting_uuid: jobPostingId
-        });
-      console.log('Debug - Top candidates (debug version):', { debugCandidates, debugCandidatesError });
 
       const { data, error } = await supabase
         .rpc('get_top_candidates', {
@@ -372,15 +355,25 @@ export const useReferralStore = create<ReferralState>((set, get) => ({
   createJobPosting: async (data) => {
     set({ loading: true, error: null });
     try {
-      const { error } = await supabase
+      console.log('Creating job posting with data:', data);
+      
+      const { data: result, error } = await supabase
         .from('job_postings')
-        .insert(data);
+        .insert(data)
+        .select();
 
-      if (error) throw error;
+      console.log('Job posting creation result:', { result, error });
+
+      if (error) {
+        console.error('Job posting creation error:', error);
+        throw error;
+      }
       
       // Refresh job postings
       await get().fetchJobPostings(data.recruiter_id);
+      console.log('Job postings refreshed successfully');
     } catch (error) {
+      console.error('Failed to create job posting:', error);
       set({ error: error instanceof Error ? error.message : 'Failed to create job posting' });
     } finally {
       set({ loading: false });

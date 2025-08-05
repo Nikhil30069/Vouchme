@@ -1,9 +1,6 @@
--- Update the get_top_candidates function to implement the correct logic
--- 1. Check if years of experience matches <= candidate's work experience
--- 2. Check if candidate's expected CTC falls between [minimum salary - 2 LPA, maximum salary + 2 LPA]
--- 3. After these filters, pull top 3 profiles based on strength score
+-- Fix data type mismatch in get_top_candidates function
+-- The issue is COUNT() returns BIGINT but function expects INTEGER
 
--- Drop the existing function first to allow return type changes
 DROP FUNCTION IF EXISTS public.get_top_candidates(UUID, INTEGER);
 
 CREATE OR REPLACE FUNCTION get_top_candidates(job_posting_uuid UUID, limit_count INTEGER DEFAULT 3)
