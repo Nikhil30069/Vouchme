@@ -50,15 +50,16 @@ export const TopCandidates = ({ user, jobPostingId, onClose }: TopCandidatesProp
   }, [jobPostingId, getTopCandidates]);
 
   const handleShowInterest = async (candidateId: string) => {
-    try {
-      if (!jobPostingId) {
-        toast.error("Job posting ID not available");
-        return;
-      }
+    if (!jobPostingId) {
+      toast.error("Job posting ID not available");
+      return;
+    }
 
+    try {
       // Update the candidate match to show interest
-      await updateCandidateMatch(candidateId, jobPostingId, { is_interested: true });
+      await updateCandidateMatch(candidateId, jobPostingId, user.id, { is_interested: true });
       
+      // Update UI only after successful DB operation
       setInterestedCandidates(prev => new Set(prev).add(candidateId));
       toast.success("Interest marked successfully!");
     } catch (error) {
@@ -67,13 +68,13 @@ export const TopCandidates = ({ user, jobPostingId, onClose }: TopCandidatesProp
   };
 
   const handleUnlockPhone = async (candidateId: string) => {
-    try {
-      if (!jobPostingId) {
-        toast.error("Job posting ID not available");
-        return;
-      }
+    if (!jobPostingId) {
+      toast.error("Job posting ID not available");
+      return;
+    }
 
-      // Get candidate contact details
+    try {
+      // Get candidate contact details first
       const details = await getCandidateContactDetails(candidateId);
       if (!details) {
         toast.error("Failed to get candidate contact details");
@@ -81,8 +82,9 @@ export const TopCandidates = ({ user, jobPostingId, onClose }: TopCandidatesProp
       }
 
       // Update the candidate match to unlock phone
-      await updateCandidateMatch(candidateId, jobPostingId, { phone_unlocked: true });
+      await updateCandidateMatch(candidateId, jobPostingId, user.id, { phone_unlocked: true });
       
+      // Update UI only after successful DB operation
       setUnlockedPhones(prev => new Set(prev).add(candidateId));
       setContactDetails(prev => ({ ...prev, [candidateId]: details }));
       toast.success("Contact details unlocked!");

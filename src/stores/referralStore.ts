@@ -93,7 +93,7 @@ interface ReferralState {
     requirements?: string[];
   }) => Promise<void>;
   
-  updateCandidateMatch: (seekerId: string, jobPostingId: string, data: {
+  updateCandidateMatch: (seekerId: string, jobPostingId: string, recruiterId: string, data: {
     is_interested?: boolean;
     phone_unlocked?: boolean;
   }) => Promise<void>;
@@ -403,30 +403,30 @@ export const useReferralStore = create<ReferralState>((set, get) => ({
     }
   },
 
-  updateCandidateMatch: async (seekerId: string, jobPostingId: string, data: { is_interested?: boolean; phone_unlocked?: boolean }) => {
+  updateCandidateMatch: async (seekerId: string, jobPostingId: string, recruiterId: string, data: { is_interested?: boolean; phone_unlocked?: boolean }) => {
     set({ loading: true, error: null });
     try {
-      const user = (await supabase.auth.getUser()).data.user;
-      if (!user) throw new Error('User not authenticated');
-
-      // Upsert candidate match
+      // Upsert candidate match using the provided recruiterId
       const { error } = await supabase
         .from('candidate_matches')
         .upsert({
           seeker_id: seekerId,
           job_posting_id: jobPostingId,
-          recruiter_id: user.id,
-          is_interested: data.is_interested || false,
-          phone_unlocked: data.phone_unlocked || false,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
+          recruiter_id: recruiterId,
+          is_interested: data.is_interested,
+          phone_unlocked: data.phone_unlocked
         }, {
           onConflict: 'seeker_id,job_posting_id,recruiter_id'
         });
 
-      if (error) throw error;
+      if (error) {
+        console.error("Error in updateCandidateMatch:", error);
+        throw error;
+      }
     } catch (error) {
       set({ error: error instanceof Error ? error.message : 'Failed to update candidate match' });
+      // Re-throw to be caught in the component
+      throw error;
     } finally {
       set({ loading: false });
     }
