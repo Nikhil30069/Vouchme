@@ -10,6 +10,7 @@ import { X, Plus, Briefcase, DollarSign, FileText } from "lucide-react";
 import { User } from "@/stores/authStore";
 import { useReferralStore } from "@/stores/referralStore";
 import { toast } from "sonner";
+import { JOB_ROLES } from "@/constants/roles";
 
 interface JobPostingFormProps {
   user: User;
@@ -30,30 +31,6 @@ export const JobPostingForm = ({ user, onClose }: JobPostingFormProps) => {
   });
 
   const [newRequirement, setNewRequirement] = useState("");
-
-  // Common job roles
-  const jobRoles = [
-    "Software Engineer",
-    "Frontend Developer",
-    "Backend Developer",
-    "Full Stack Developer",
-    "DevOps Engineer",
-    "Data Scientist",
-    "Product Manager",
-    "UI/UX Designer",
-    "QA Engineer",
-    "System Administrator",
-    "Network Engineer",
-    "Cybersecurity Analyst",
-    "Business Analyst",
-    "Project Manager",
-    "Sales Representative",
-    "Marketing Specialist",
-    "Content Writer",
-    "Graphic Designer",
-    "Financial Analyst",
-    "Human Resources"
-  ];
 
   const handleInputChange = (field: string, value: string | number) => {
     setFormData(prev => ({
@@ -144,9 +121,9 @@ export const JobPostingForm = ({ user, onClose }: JobPostingFormProps) => {
                   <SelectValue placeholder="Select job role" />
                 </SelectTrigger>
                 <SelectContent>
-                  {jobRoles.map((role) => (
-                    <SelectItem key={role} value={role}>
-                      {role}
+                  {JOB_ROLES.map((role) => (
+                    <SelectItem key={role.value} value={role.value}>
+                      {role.label}
                     </SelectItem>
                   ))}
                 </SelectContent>

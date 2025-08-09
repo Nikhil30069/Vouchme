@@ -15,6 +15,7 @@ import { User } from "@/stores/authStore";
 import { useJobStore } from "@/stores/jobStore";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { JOB_ROLES } from "@/constants/roles";
 
 interface JobRequirementFormProps {
   user: User;
@@ -148,9 +149,11 @@ export const JobRequirementForm = ({
                     <SelectValue placeholder="Select role" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="software-developer">
-                      Software Developer
-                    </SelectItem>
+                    {JOB_ROLES.map((role) => (
+                      <SelectItem key={role.value} value={role.value}>
+                        {role.label}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
