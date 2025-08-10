@@ -23,9 +23,10 @@ import { supabase } from "@/integrations/supabase/client";
 
 interface UserRegistrationProps {
   phoneNumber: string;
+  password: string;
 }
 
-export const UserRegistration = ({ phoneNumber }: UserRegistrationProps) => {
+export const UserRegistration = ({ phoneNumber, password }: UserRegistrationProps) => {
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -35,6 +36,7 @@ export const UserRegistration = ({ phoneNumber }: UserRegistrationProps) => {
       years: 0,
       organization: "",
     },
+    password: password || "",
   });
 
   const [isLoading, setIsLoading] = useState(false);
@@ -45,12 +47,7 @@ export const UserRegistration = ({ phoneNumber }: UserRegistrationProps) => {
   // 🔍 Check if user is already registered
   useEffect(() => {
     const checkProfile = async () => {
-      const {
-        data: { user },
-        error: authError,
-      } = await supabase.auth.getUser();
-
-      if (authError || !user) {
+      if (!phoneNumber) {
         setIsChecking(false);
         return;
       }
@@ -58,10 +55,12 @@ export const UserRegistration = ({ phoneNumber }: UserRegistrationProps) => {
       const { data: profile, error: profileError } = await supabase
         .from("profiles")
         .select("*")
-        .eq("id", user.id)
+        .eq("phone", phoneNumber)
         .single();
 
       if (!profileError && profile) {
+        // Store the profile object as a string in localStorage
+        localStorage.setItem("userProfile", JSON.stringify(profile));
         login(profile);
       } else {
         setIsChecking(false); // No profile found, show form
@@ -76,47 +75,42 @@ export const UserRegistration = ({ phoneNumber }: UserRegistrationProps) => {
     setIsLoading(true);
 
     try {
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
+    // Generate a unique id if needed, or let DB handle it
+    const userObj: User & { password: string } = {
+      id: crypto.randomUUID(), // Generate a unique ID
+      name: formData.name,
+      phone: phoneNumber,
+      email: formData.email,
+      persona: formData.persona,
+      workExperience:
+        formData.persona === "referrer" ? formData.workExperience : undefined,
+      createdAt: `${new Date()}`,
+      password: formData.password,
+    };
 
-      if (userError || !user) {
-        throw new Error("User not authenticated");
-      }
+    const { error: insertError, data } = await supabase
+      .from("profiles")
+      .insert([userObj])
+      .select()
+      .single();
 
-      const userObj: User = {
-        id: user.id,
-        name: formData.name,
-        phone: phoneNumber,
-        email: formData.email,
-        persona: formData.persona,
-        workExperience:
-          formData.persona === "referrer" ? formData.workExperience : undefined,
-        createdAt: `${new Date()}`,
-      };
+    if (insertError) throw insertError;
 
-      const { error: insertError } = await supabase
-        .from("profiles")
-        .insert([userObj]);
+    login(data || userObj);
 
-      if (insertError) throw insertError;
-
-      login(userObj);
-
-      toast({
-        title: "Success",
-        description: "Profile created successfully!",
-      });
-
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to create profile. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoading(false);
+    toast({
+      title: "Success",
+      description: "Profile created successfully!",
+    });
+  } catch (error) {
+    console.log(error);
+    toast({
+      title: "Error",
+      description: "Failed to create profile. Please try again.",
+      variant: "destructive",
+    });
+  } finally {
+    setIsLoading(false);
     }
   };
 
@@ -186,6 +180,21 @@ export const UserRegistration = ({ phoneNumber }: UserRegistrationProps) => {
                 <SelectItem value="referrer">Referrer</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-gray-700">
+              Password
+            </label>
+            <Input
+              type="password"
+              placeholder="Set a password"
+              value={formData.password}
+              onChange={(e) =>
+                setFormData({ ...formData, password: e.target.value })
+              }
+              required
+              className="h-11"
+            />
           </div>
 
           {formData.persona === "referrer" && (
