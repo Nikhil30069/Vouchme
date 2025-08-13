@@ -209,7 +209,7 @@ export const ReferrerSelectionPopup = ({
               </h3>
               <p className="text-gray-600 mb-4">
                 We couldn't find any referrers with more than{" "}
-                {jobExperience + 1} years of experience in {jobRole}.
+                {jobExperience + 2} years of experience in {JOB_ROLES.find(roleObj => roleObj.value === jobRole).label}.
               </p>
               <p className="text-sm text-gray-500">
                 Try posting a different job requirement or check back later as

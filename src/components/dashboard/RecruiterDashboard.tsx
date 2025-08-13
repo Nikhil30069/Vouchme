@@ -8,6 +8,7 @@ import { User } from "@/stores/authStore";
 import { useReferralStore } from "@/stores/referralStore";
 import { TopCandidates } from "./TopCandidates";
 import { JobPostingForm } from "./JobPostingForm";
+import { JOB_ROLES } from "@/constants/roles";
 
 interface RecruiterDashboardProps {
   user: User;
@@ -169,8 +170,7 @@ export const RecruiterDashboard = ({ user }: RecruiterDashboardProps) => {
                 <div key={job.id} className="p-4 border rounded-lg hover:bg-gray-50 transition-colors">
                   <div className="flex justify-between items-start mb-2">
                     <div>
-                      <h3 className="font-medium text-gray-900">{job.title}</h3>
-                      <p className="text-sm text-gray-600">{job.role}</p>
+                      <p className="text-sm text-gray-600">{JOB_ROLES.find((roleObj) => roleObj.value === job.role).label}</p>
                     </div>
                     <div className="flex items-center space-x-2">
                       <Badge variant="outline">{job.years_of_experience}+ years exp</Badge>

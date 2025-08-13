@@ -19,6 +19,7 @@ import {
 import { useReferralStore } from "@/stores/referralStore";
 import { User } from "@/stores/authStore";
 import { toast } from "sonner";
+import { JOB_ROLES } from "@/constants/roles";
 
 interface TopCandidatesProps {
   user: User;
@@ -215,7 +216,7 @@ export const TopCandidates = ({ user, jobPostingId, onClose }: TopCandidatesProp
                       <div className="flex items-center space-x-4 text-sm text-gray-600 mb-3">
                         <div className="flex items-center space-x-1">
                           <Briefcase className="w-4 h-4" />
-                          <span>{candidate.seeker_role}</span>
+                          <span>{JOB_ROLES.find((roleObj) => roleObj.value === candidate.seeker_role).label}</span>
                         </div>
                         <div className="flex items-center space-x-1">
                           <Star className="w-4 h-4" />

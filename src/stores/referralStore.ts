@@ -73,7 +73,6 @@ interface ReferralState {
   
   createJobPosting: (data: {
     recruiter_id: string;
-    title: string;
     role: string;
     years_of_experience: number;
     salary_min?: number;

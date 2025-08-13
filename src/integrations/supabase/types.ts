@@ -103,7 +103,6 @@ export type Database = {
           role: string
           salary_max: number | null
           salary_min: number | null
-          title: string
           updated_at: string | null
           years_of_experience: number
         }
@@ -117,7 +116,6 @@ export type Database = {
           role: string
           salary_max?: number | null
           salary_min?: number | null
-          title: string
           updated_at?: string | null
           years_of_experience: number
         }
@@ -131,7 +129,6 @@ export type Database = {
           role?: string
           salary_max?: number | null
           salary_min?: number | null
-          title?: string
           updated_at?: string | null
           years_of_experience?: number
         }
@@ -356,7 +353,6 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: {
           salary_max: number
-          job_title: string
           job_role: string
           min_experience: number
           salary_min: number

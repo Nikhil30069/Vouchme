@@ -1,10 +1,22 @@
 import { useState } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { X, Plus, Briefcase, DollarSign, FileText } from "lucide-react";
 import { User } from "@/stores/authStore";
@@ -19,47 +31,48 @@ interface JobPostingFormProps {
 
 export const JobPostingForm = ({ user, onClose }: JobPostingFormProps) => {
   const { createJobPosting, loading } = useReferralStore();
-  
+
   const [formData, setFormData] = useState({
-    title: "",
     role: "",
     years_of_experience: 0,
     salary_min: 0,
     salary_max: 0,
     description: "",
-    requirements: [] as string[]
+    requirements: [] as string[],
   });
 
   const [newRequirement, setNewRequirement] = useState("");
 
   const handleInputChange = (field: string, value: string | number) => {
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      [field]: value
+      [field]: value,
     }));
   };
 
   const handleAddRequirement = () => {
     if (newRequirement.trim()) {
-      setFormData(prev => ({
+      setFormData((prev) => ({
         ...prev,
-        requirements: [...prev.requirements, newRequirement.trim()]
+        requirements: [...prev.requirements, newRequirement.trim()],
       }));
       setNewRequirement("");
     }
   };
 
   const handleRemoveRequirement = (index: number) => {
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      requirements: prev.requirements.filter((_, i) => i !== index)
+      requirements: prev.requirements.filter((_, i) => i !== index),
     }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!formData.title || !formData.role || formData.years_of_experience <= 0) {
+
+    if (!formData.role ||
+      formData.years_of_experience <= 0
+    ) {
       toast.error("Please fill in all required fields");
       return;
     }
@@ -78,7 +91,8 @@ export const JobPostingForm = ({ user, onClose }: JobPostingFormProps) => {
         salary_min: formData.salary_min || undefined,
         salary_max: formData.salary_max || undefined,
         description: formData.description || undefined,
-        requirements: formData.requirements.length > 0 ? formData.requirements : undefined
+        requirements:
+          formData.requirements.length > 0 ? formData.requirements : undefined,
       });
 
       toast.success("Job posting created successfully!");
@@ -96,14 +110,15 @@ export const JobPostingForm = ({ user, onClose }: JobPostingFormProps) => {
           <span>Create Job Posting</span>
         </CardTitle>
         <CardDescription>
-          Create a new job posting to find top candidates based on strength scores
+          Create a new job posting to find top candidates based on strength
+          scores
         </CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Basic Information */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
+            {/* <div className="space-y-2">
               <Label htmlFor="title">Job Title *</Label>
               <Input
                 id="title"
@@ -112,11 +127,14 @@ export const JobPostingForm = ({ user, onClose }: JobPostingFormProps) => {
                 placeholder="e.g., Senior Software Engineer"
                 required
               />
-            </div>
+            </div> */}
 
             <div className="space-y-2">
               <Label htmlFor="role">Job Role *</Label>
-              <Select value={formData.role} onValueChange={(value) => handleInputChange("role", value)}>
+              <Select
+                value={formData.role}
+                onValueChange={(value) => handleInputChange("role", value)}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Select job role" />
                 </SelectTrigger>
@@ -129,9 +147,6 @@ export const JobPostingForm = ({ user, onClose }: JobPostingFormProps) => {
                 </SelectContent>
               </Select>
             </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="experience">Years of Experience Required *</Label>
               <Input
@@ -140,7 +155,12 @@ export const JobPostingForm = ({ user, onClose }: JobPostingFormProps) => {
                 min="0"
                 max="50"
                 value={formData.years_of_experience || ""}
-                onChange={(e) => handleInputChange("years_of_experience", parseInt(e.target.value) || 0)}
+                onChange={(e) =>
+                  handleInputChange(
+                    "years_of_experience",
+                    parseInt(e.target.value) || 0
+                  )
+                }
                 placeholder="e.g., 3"
                 required
               />
@@ -161,7 +181,12 @@ export const JobPostingForm = ({ user, onClose }: JobPostingFormProps) => {
                   type="number"
                   min="0"
                   value={formData.salary_min || ""}
-                  onChange={(e) => handleInputChange("salary_min", parseInt(e.target.value) || 0)}
+                  onChange={(e) =>
+                    handleInputChange(
+                      "salary_min",
+                      parseInt(e.target.value) || 0
+                    )
+                  }
                   placeholder="e.g., 500000"
                 />
               </div>
@@ -172,7 +197,12 @@ export const JobPostingForm = ({ user, onClose }: JobPostingFormProps) => {
                   type="number"
                   min="0"
                   value={formData.salary_max || ""}
-                  onChange={(e) => handleInputChange("salary_max", parseInt(e.target.value) || 0)}
+                  onChange={(e) =>
+                    handleInputChange(
+                      "salary_max",
+                      parseInt(e.target.value) || 0
+                    )
+                  }
                   placeholder="e.g., 1500000"
                 />
               </div>
@@ -192,7 +222,7 @@ export const JobPostingForm = ({ user, onClose }: JobPostingFormProps) => {
           </div>
 
           {/* Requirements */}
-          <div className="space-y-2">
+          {/* <div className="space-y-2">
             <Label className="flex items-center space-x-2">
               <FileText className="w-4 h-4" />
               <span>Requirements</span>
@@ -203,7 +233,10 @@ export const JobPostingForm = ({ user, onClose }: JobPostingFormProps) => {
                   value={newRequirement}
                   onChange={(e) => setNewRequirement(e.target.value)}
                   placeholder="Add a requirement (e.g., React experience)"
-                  onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddRequirement())}
+                  onKeyPress={(e) =>
+                    e.key === "Enter" &&
+                    (e.preventDefault(), handleAddRequirement())
+                  }
                 />
                 <Button
                   type="button"
@@ -214,11 +247,15 @@ export const JobPostingForm = ({ user, onClose }: JobPostingFormProps) => {
                   <Plus className="w-4 h-4" />
                 </Button>
               </div>
-              
+
               {formData.requirements.length > 0 && (
                 <div className="flex flex-wrap gap-2">
                   {formData.requirements.map((req, index) => (
-                    <Badge key={index} variant="secondary" className="flex items-center space-x-1">
+                    <Badge
+                      key={index}
+                      variant="secondary"
+                      className="flex items-center space-x-1"
+                    >
                       <span>{req}</span>
                       <button
                         type="button"
@@ -232,7 +269,7 @@ export const JobPostingForm = ({ user, onClose }: JobPostingFormProps) => {
                 </div>
               )}
             </div>
-          </div>
+          </div> */}
 
           {/* Submit Buttons */}
           <div className="flex justify-end space-x-3 pt-6 border-t">
@@ -247,4 +284,4 @@ export const JobPostingForm = ({ user, onClose }: JobPostingFormProps) => {
       </CardContent>
     </Card>
   );
-}; 
+};
