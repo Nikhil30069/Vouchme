@@ -10,6 +10,8 @@ import { useReferralStore } from "@/stores/referralStore";
 import { JobRequirementForm } from "./JobRequirementForm";
 import { StrengthScore } from "./StrengthScore";
 import { ReferrerSelectionPopup } from "./ReferrerSelectionPopup";
+import { supabase } from "@/lib/supabaseClient";
+import { JOB_ROLES } from "@/constants/roles";
 
 interface SeekerDashboardProps {
   user: User;
@@ -19,15 +21,27 @@ export const SeekerDashboard = ({ user }: SeekerDashboardProps) => {
   const [showForm, setShowForm] = useState(false);
   const [showReferrerPopup, setShowReferrerPopup] = useState(false);
   const [selectedJob, setSelectedJob] = useState<{ id: string; role: string; experience: number } | null>(null);
-  const { getJobsByUser } = useJobStore();
+  const [allJobs, setAllJobs] = useState<any[]>([]);
   const { fetchReferralRequests, referralRequests } = useReferralStore();
-  
-  const userJobs = getJobsByUser(user.id);
-  console.log (user.id)
 
   useEffect(() => {
     fetchReferralRequests(user.id);
   }, [user.id, fetchReferralRequests]);
+
+  useEffect(() => {
+    const fetchJobs = async () => {
+      const { data, error } = await supabase
+        .from('job_requirements')
+        .select('*')
+        .eq('userId', user.id);
+
+      if (!error && data) {
+        setAllJobs(data);
+      }
+    };
+
+    fetchJobs();
+  }, [])
 
   // Calculate referral metrics
   const pendingRequests = referralRequests.filter(
@@ -87,7 +101,7 @@ export const SeekerDashboard = ({ user }: SeekerDashboardProps) => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600">Total Applications</p>
-                <p className="text-2xl font-bold text-gray-900">{userJobs.length}</p>
+                <p className="text-2xl font-bold text-gray-900">{allJobs.length}</p>
               </div>
               <div className="bg-blue-100 p-3 rounded-full">
                 <Briefcase className="w-6 h-6 text-blue-600" />
@@ -194,7 +208,7 @@ export const SeekerDashboard = ({ user }: SeekerDashboardProps) => {
           <CardDescription>Track all your job applications and requirements</CardDescription>
         </CardHeader>
         <CardContent>
-          {userJobs.length === 0 ? (
+          {allJobs.length === 0 ? (
             <div className="text-center py-12">
               <Briefcase className="w-12 h-12 text-gray-400 mx-auto mb-4" />
               <h3 className="text-lg font-medium text-gray-900 mb-2">No job requirements yet</h3>
@@ -206,10 +220,10 @@ export const SeekerDashboard = ({ user }: SeekerDashboardProps) => {
             </div>
           ) : (
             <div className="space-y-4">
-              {userJobs.map((job) => (
+              {allJobs.map((job) => (
                 <div key={job.id} className="p-4 border rounded-lg hover:bg-gray-50 transition-colors">
                   <div className="flex justify-between items-start mb-2">
-                    <h3 className="font-medium text-gray-900">{job.role}</h3>
+                    <h3 className="font-medium text-gray-900">{JOB_ROLES.find(roleObj => roleObj.value === job.role).label}</h3>
                     <Badge variant="outline">{job.yearsOfExperience} years exp</Badge>
                   </div>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm text-gray-600 mb-3">

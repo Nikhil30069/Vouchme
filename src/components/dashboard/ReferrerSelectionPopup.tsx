@@ -23,6 +23,7 @@ import {
 import { useReferralStore } from "@/stores/referralStore";
 import { useAuthStore } from "@/stores/authStore";
 import { supabase } from "@/lib/supabaseClient";
+import { JOB_ROLES } from "@/constants/roles";
 
 interface ReferrerSelectionPopupProps {
   isOpen: boolean;
@@ -77,19 +78,19 @@ export const ReferrerSelectionPopup = ({
         .from("job_requirements")
         .select("role, yearsOfExperience")
         .eq("id", jobRequirementId)
-        .single();
+        .single()
 
       if (jobError) throw jobError;
       const jobRole = jobData.role;
       const jobYears = jobData.yearsOfExperience;
-
+      console.log ("Job Role:", jobRole, "Job Years:", jobYears);
       const { data, error } = await supabase
         .from("profiles")
         .select("*")
-        .eq("work_experience->>role", jobRole)
-        .gte("work_experience->>years", jobYears + 2);
+        .eq("workExperience->>role", jobRole)
+        .gte("workExperience->>years", jobYears + 2);
 
-      console.log(data);
+      console.log(data, error);
 
       const { eligibleReferrers } = useReferralStore.getState();
       setEligibleReferrers(eligibleReferrers);
@@ -156,7 +157,9 @@ export const ReferrerSelectionPopup = ({
           <DialogTitle className="flex items-center space-x-2">
             <Users className="w-5 h-5 text-blue-600" />
             <span>
-              Select Referrers for {jobRole} ({jobExperience} years)
+              Select Referrers{" "}
+              {JOB_ROLES.find((roleObj) => roleObj.value === jobRole).label} (
+              {jobExperience} years)
             </span>
           </DialogTitle>
         </DialogHeader>
