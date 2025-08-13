@@ -20,6 +20,7 @@ import { UserPlus } from "lucide-react";
 import { useAuthStore, User } from "@/stores/authStore";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { JOB_ROLES } from "@/constants/roles";
 
 interface UserRegistrationProps {
   phoneNumber: string;
@@ -223,7 +224,7 @@ export const UserRegistration = ({ phoneNumber, password }: UserRegistrationProp
                     <SelectValue placeholder="Select your role" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="software-developer">
+                    <SelectItem value={JOB_ROLES[0].value}>
                       Software Developer
                     </SelectItem>
                   </SelectContent>

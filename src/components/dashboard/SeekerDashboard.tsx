@@ -23,6 +23,7 @@ export const SeekerDashboard = ({ user }: SeekerDashboardProps) => {
   const { fetchReferralRequests, referralRequests } = useReferralStore();
   
   const userJobs = getJobsByUser(user.id);
+  console.log (user.id)
 
   useEffect(() => {
     fetchReferralRequests(user.id);
@@ -68,7 +69,7 @@ export const SeekerDashboard = ({ user }: SeekerDashboardProps) => {
           <Button 
             onClick={() => setShowReferrerPopup(true)}
             variant="outline"
-            className="border-white text-white hover:bg-white hover:text-blue-600 font-semibold text-base"
+            className="bg-white text-blue-600 hover:bg-blue-50"
           >
             <Send className="w-4 h-4 mr-2" />
             Send Referral Requests
@@ -213,10 +214,10 @@ export const SeekerDashboard = ({ user }: SeekerDashboardProps) => {
                   </div>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm text-gray-600 mb-3">
                     <div>
-                      <span className="font-medium">Current CTC:</span> ₹{job.currentCTC?.toLocaleString()}
+                      <span className="font-medium">Current CTC:</span> ₹{job.currentCtc?.toLocaleString()}
                     </div>
                     <div>
-                      <span className="font-medium">Expected CTC:</span> ₹{job.expectedCTC?.toLocaleString()}
+                      <span className="font-medium">Expected CTC:</span> ₹{job.expectedCtc?.toLocaleString()}
                     </div>
                     <div>
                       <span className="font-medium">Notice Period:</span> {job.noticePeriod} days
@@ -228,6 +229,7 @@ export const SeekerDashboard = ({ user }: SeekerDashboardProps) => {
                   <div className="flex justify-end">
                     <Button 
                       onClick={() => {
+                        console.log (job)
                         setSelectedJob({ id: job.id, role: job.role, experience: job.yearsOfExperience });
                         setShowReferrerPopup(true);
                       }}

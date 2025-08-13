@@ -52,22 +52,21 @@ export const JobRequirementForm = ({
 
     try {
       let uploadedResumeUrl = "";
-
-      // Upload resume file to Supabase Storage if present
+      console.log (resumeFile, uploadedResumeUrl)
       if (resumeFile) {
         const fileExt = resumeFile.name.split(".").pop();
-        const filePath = `resumes/${user.id}/${Date.now()}.${fileExt}`;
-
+        const filePath = `resumes/${user.id}/${user.name}/${Date.now()}.${fileExt}`;
+        console.log (filePath)
         const { error: uploadError } = await supabase.storage
           .from("resumes")
-          .upload(filePath, resumeFile);
+          .upload(filePath, resumeFile, { upsert: true, cacheControl: "3600" });
 
         if (uploadError) throw uploadError;
-
+        console.log (uploadError)
         const { data: publicUrlData } = supabase.storage
           .from("resumes")
           .getPublicUrl(filePath);
-
+        console.log (publicUrlData)
         uploadedResumeUrl = publicUrlData.publicUrl;
       }
 
@@ -79,6 +78,8 @@ export const JobRequirementForm = ({
         type,
         createdAt: new Date().toISOString(),
       };
+
+      console.log (jobData)
 
       if (type === "seeker") {
         Object.assign(jobData, {
