@@ -182,11 +182,46 @@ export const useReferralStore = create<ReferralState>((set, get) => ({
         data.forEach((req, index) => {
           console.log(`  ${index + 1}. ID: ${req.id}, Seeker: ${req.seeker_id}, Referrer: ${req.referrer_id}, Role: ${req.job_role}, Status: ${req.status}`);
         });
+        
+        // Fetch job requirement details for resume URLs
+        console.log('🔍 [FETCH] Fetching job requirement details for resume URLs...');
+        
+        const jobRequirementIds = [...new Set(data.map(req => req.job_requirement_id).filter(Boolean))];
+        
+        if (jobRequirementIds.length > 0) {
+          const { data: jobReqs, error: jobReqError } = await supabase
+            .from('job_requirements')
+            .select('id, resumeUrl')
+            .in('id', jobRequirementIds);
+          
+          if (jobReqError) {
+            console.warn('⚠️ [FETCH] Could not fetch job requirement details:', jobReqError);
+            set({ referralRequests: data || [] });
+          } else {
+            console.log('📋 [FETCH] Job requirement details fetched:', jobReqs);
+            
+            // Merge resume URLs into referral requests
+            const enrichedData = data.map(req => {
+              const jobReq = jobReqs?.find(jr => jr.id === req.job_requirement_id);
+              return {
+                ...req,
+                resume_url: jobReq?.resumeUrl || null
+              };
+            });
+            
+            console.log('🔗 [FETCH] Enriched referral requests with resume URLs:', enrichedData);
+            set({ referralRequests: enrichedData || [] });
+            return;
+          }
+        } else {
+          console.log('⚠️ [FETCH] No job_requirement_id found in referral requests');
+          set({ referralRequests: data || [] });
+        }
       } else {
         console.log('⚠️ [FETCH] No referral requests found for user:', userId);
+        set({ referralRequests: data || [] });
       }
       
-      set({ referralRequests: data || [] });
       console.log('✅ [FETCH] Referral requests updated in store');
       
     } catch (error) {
@@ -410,18 +445,54 @@ export const useReferralStore = create<ReferralState>((set, get) => ({
   createScore: async (data) => {
     set({ loading: true, error: null });
     try {
-      const { error } = await supabase
+      console.log('🎯 [CREATE_SCORE] Starting score creation with data:', JSON.stringify(data, null, 2));
+      
+      // Validate required fields
+      const requiredFields = ['referral_request_id', 'referrer_id', 'seeker_id', 'parameter_id', 'score'];
+      const missingFields = requiredFields.filter(field => !data[field] && data[field] !== 0);
+      
+      if (missingFields.length > 0) {
+        console.error('❌ [CREATE_SCORE] Missing required fields:', missingFields);
+        throw new Error(`Missing required fields: ${missingFields.join(', ')}`);
+      }
+      
+      console.log('✅ [CREATE_SCORE] All required fields present, proceeding with database insert');
+      
+      const { data: result, error } = await supabase
         .from('scores')
         .upsert(data, { onConflict: 'referral_request_id,parameter_id' });
 
-      if (error) throw error;
+      console.log('📊 [CREATE_SCORE] Database upsert result:', { 
+        success: !error, 
+        result: result, 
+        error: error 
+      });
+
+      if (error) {
+        console.error('❌ [CREATE_SCORE] Database upsert failed:', error);
+        throw error;
+      }
+      
+      console.log('✅ [CREATE_SCORE] Score created/updated successfully');
       
       // Update referral request status to 'scored'
+      console.log('🔄 [CREATE_SCORE] Updating referral request status to scored');
       await get().updateReferralRequestStatus(data.referral_request_id, 'scored');
       
       // Refresh scores
+      console.log('🔄 [CREATE_SCORE] Refreshing scores for seeker');
       await get().fetchScores(data.seeker_id);
+      
+      console.log('🎉 [CREATE_SCORE] Score creation process completed successfully');
+      
     } catch (error) {
+      console.error('💥 [CREATE_SCORE] Error creating score:', error);
+      console.error('💥 [CREATE_SCORE] Error details:', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name,
+        data: data
+      });
       set({ error: error instanceof Error ? error.message : 'Failed to create score' });
     } finally {
       set({ loading: false });

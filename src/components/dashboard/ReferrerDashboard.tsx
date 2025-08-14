@@ -65,7 +65,15 @@ export const ReferrerDashboard = ({ user }: ReferrerDashboardProps) => {
     });
   }
 
-  const handleScoreChange = (requestId: string, parameterId: string, score: number) => {
+  const handleScoreChange = (requestId: string, parameterId: string, score: number | '') => {
+    // Validate score range
+    if (score !== '' && (score < 0 || score > 10)) {
+      console.warn(`⚠️ [SCORING] Invalid score ${score} for parameter ${parameterId}. Score must be between 0-10.`);
+      return; // Don't update if invalid
+    }
+    
+    console.log(`📝 [SCORING] Updating score for request ${requestId}, parameter ${parameterId}: ${score}`);
+    
     setScores(prev => ({
       ...prev,
       [requestId]: {
@@ -83,8 +91,13 @@ export const ReferrerDashboard = ({ user }: ReferrerDashboardProps) => {
   };
 
   const handleSubmitScore = async (requestId: string) => {
+    console.log('🚀 [SUBMIT_SCORES] Starting score submission for request:', requestId);
+    
     const requestScores = scores[requestId];
+    console.log('📊 [SUBMIT_SCORES] Current scores for this request:', requestScores);
+    
     if (!requestScores || Object.keys(requestScores).length === 0) {
+      console.error('❌ [SUBMIT_SCORES] No scores provided');
       toast.error("Please provide scores for all parameters");
       return;
     }
@@ -92,32 +105,55 @@ export const ReferrerDashboard = ({ user }: ReferrerDashboardProps) => {
     // Validate all parameters have scores
     const missingParameters = scoringParameters.filter(param => !requestScores[param.id]);
     if (missingParameters.length > 0) {
+      console.error('❌ [SUBMIT_SCORES] Missing scores for parameters:', missingParameters.map(p => p.name));
       toast.error(`Please provide scores for: ${missingParameters.map(p => p.name).join(', ')}`);
       return;
     }
+
+    // Validate score ranges
+    const invalidScores = Object.entries(requestScores).filter(([paramId, score]) => 
+      score === '' || score < 0 || score > 10
+    );
+    
+    if (invalidScores.length > 0) {
+      console.error('❌ [SUBMIT_SCORES] Invalid scores found:', invalidScores);
+      toast.error("Please ensure all scores are between 0 and 10");
+      return;
+    }
+
+    console.log('✅ [SUBMIT_SCORES] All validations passed, proceeding with submission');
 
     setSubmittingScores(prev => new Set(prev).add(requestId));
 
     try {
       const request = myReferralRequests.find(req => req.id === requestId);
       if (!request) {
+        console.error('❌ [SUBMIT_SCORES] Referral request not found in local state');
         toast.error("Referral request not found");
         return;
       }
 
+      console.log('📋 [SUBMIT_SCORES] Referral request details:', request);
+
       // Create scores for all parameters
-      const scorePromises = Object.entries(requestScores).map(([parameterId, score]) =>
-        createScore({
+      const scorePromises = Object.entries(requestScores).map(([parameterId, score]) => {
+        const scoreData = {
           referral_request_id: requestId,
           referrer_id: user.id,
           seeker_id: request.seeker_id,
           parameter_id: parameterId,
           score: score,
           comments: comments[requestId] || undefined
-        })
-      );
+        };
+        
+        console.log(`📝 [SUBMIT_SCORES] Creating score for parameter ${parameterId}:`, scoreData);
+        return createScore(scoreData);
+      });
 
+      console.log('🔄 [SUBMIT_SCORES] Submitting all scores...');
       await Promise.all(scorePromises);
+      
+      console.log('✅ [SUBMIT_SCORES] All scores submitted successfully!');
       toast.success("Scores submitted successfully!");
       
       // Clear form data
@@ -131,10 +167,18 @@ export const ReferrerDashboard = ({ user }: ReferrerDashboardProps) => {
         delete newComments[requestId];
         return newComments;
       });
+      
+      console.log('🧹 [SUBMIT_SCORES] Form data cleared');
 
       // Refresh data
       await fetchReferralRequests(user.id);
     } catch (error) {
+      console.error('💥 [SUBMIT_SCORES] Error submitting scores:', error);
+      console.error('💥 [SUBMIT_SCORES] Error details:', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      });
       toast.error("Failed to submit scores. Please try again.");
     } finally {
       setSubmittingScores(prev => {
@@ -142,6 +186,7 @@ export const ReferrerDashboard = ({ user }: ReferrerDashboardProps) => {
         newSet.delete(requestId);
         return newSet;
       });
+      console.log('🔄 [SUBMIT_SCORES] Submission state reset');
     }
   };
 
@@ -271,33 +316,66 @@ export const ReferrerDashboard = ({ user }: ReferrerDashboardProps) => {
 
                   {request.status === 'pending' && (
                     <div className="space-y-4">
+                      {/* Resume Display */}
+                      <div className="bg-gray-50 p-4 rounded-lg">
+                        <h4 className="font-medium text-gray-900 mb-2 flex items-center">
+                          <FileText className="w-4 h-4 mr-2" />
+                          Candidate Resume
+                        </h4>
+                        <div className="flex items-center space-x-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => window.open(request.resume_url, '_blank')}
+                            disabled={!request.resume_url}
+                          >
+                            <FileText className="w-4 h-4 mr-2" />
+                            {request.resume_url ? 'View Resume' : 'No Resume Available'}
+                          </Button>
+                          {request.resume_url && (
+                            <span className="text-xs text-gray-500">
+                              Click to open in new tab
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
                       <div>
                         <h4 className="font-medium text-gray-900 mb-3">Score the candidate:</h4>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          {scoringParameters.map((parameter) => (
-                            <div key={parameter.id} className="space-y-2">
-                              <Label htmlFor={`score-${request.id}-${parameter.id}`}>
-                                {parameter.name} (1-{parameter.max_score})
-                              </Label>
-                              <Input
-                                id={`score-${request.id}-${parameter.id}`}
-                                type="number"
-                                min="1"
-                                max={parameter.max_score}
-                                value={scores[request.id]?.[parameter.id] || ''}
-                                onChange={(e) => handleScoreChange(
-                                  request.id, 
-                                  parameter.id, 
-                                  parseInt(e.target.value) || 0
+                          {scoringParameters.map((parameter) => {
+                            const currentScore = scores[request.id]?.[parameter.id] || '';
+                            const isValidScore = currentScore === '' || (currentScore >= 0 && currentScore <= 10);
+                            
+                            return (
+                              <div key={parameter.id} className="space-y-2">
+                                <Label htmlFor={`score-${request.id}-${parameter.id}`}>
+                                  {parameter.name} (0-10)
+                                </Label>
+                                <Input
+                                  id={`score-${request.id}-${parameter.id}`}
+                                  type="number"
+                                  min="0"
+                                  max="10"
+                                  value={currentScore}
+                                  onChange={(e) => {
+                                    const value = e.target.value === '' ? '' : parseInt(e.target.value);
+                                    handleScoreChange(request.id, parameter.id, value);
+                                  }}
+                                  placeholder="0-10"
+                                  className={`w-full ${!isValidScore ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''}`}
+                                />
+                                {!isValidScore && (
+                                  <p className="text-xs text-red-500">
+                                    Please enter a score between 0 and 10
+                                  </p>
                                 )}
-                                placeholder={`1-${parameter.max_score}`}
-                                className="w-full"
-                              />
-                              {parameter.description && (
-                                <p className="text-xs text-gray-500">{parameter.description}</p>
-                              )}
-                            </div>
-                          ))}
+                                {parameter.description && (
+                                  <p className="text-xs text-gray-500">{parameter.description}</p>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
 
