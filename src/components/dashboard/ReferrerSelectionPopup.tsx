@@ -90,23 +90,33 @@ export const ReferrerSelectionPopup = ({
         .eq("workExperience->>role", jobRole)
         .gte("workExperience->>years", jobYears + 2);
 
-      console.log(data, error);
+      console.log("Raw profile data:", data);
+      console.log("Sample profile fields:", data?.[0] ? Object.keys(data[0]) : "No data");
+      console.log("Sample profile:", data?.[0]);
 
       if (error) {
         console.error("Error fetching profiles:", error);
         setEligibleReferrers([]);
       } else {
         // Transform the data to match the expected format
-        const transformedData = (data || []).map(profile => ({
-          referrer_id: profile.id,
-          referrer_name: profile.name,
-          referrer_role: profile.role,
-          referrer_experience: profile.years_of_experience || 0,
-          organization: profile.organization,
-          total_experience_years: profile.total_experience_years,
-          organizations: profile.organizations,
-          current_organization: profile.current_organization
-        }));
+        const transformedData = (data || []).map(profile => {
+          // Extract experience data from workExperience JSON
+          const workExp = profile.workExperience || {};
+          const experienceYears = workExp.years || 0;
+          const experienceRole = workExp.role || profile.role;
+          const experienceOrg = workExp.organization || profile.organization;
+          
+          return {
+            referrer_id: profile.id,
+            referrer_name: profile.name,
+            referrer_role: experienceRole,
+            referrer_experience: experienceYears,
+            organization: experienceOrg,
+            total_experience_years: experienceYears,
+            organizations: profile.organizations || [experienceOrg].filter(Boolean),
+            current_organization: profile.current_organization || experienceOrg
+          };
+        });
         
         console.log("Transformed data:", transformedData);
         setEligibleReferrers(transformedData);
@@ -277,17 +287,23 @@ export const ReferrerSelectionPopup = ({
                           )}
                         </div>
 
-                        {/* Experience */}
+                        {/* Experience and Organization */}
                         <div className="flex items-center space-x-4 text-sm text-gray-600 mb-2">
                           <div className="flex items-center space-x-1">
                             <Calendar className="w-4 h-4" />
                             <span>
-                              Total{" "}
-                              {referrer.total_experience_years ||
-                                referrer.referrer_experience}{" "}
-                              years experience
+                              Experience: {referrer.total_experience_years ||
+                                referrer.referrer_experience} years
                             </span>
                           </div>
+                          {referrer.organization && (
+                            <div className="flex items-center space-x-1">
+                              <Building2 className="w-4 h-4" />
+                              <span>
+                                Organization: {referrer.organization}
+                              </span>
+                            </div>
+                          )}
                         </div>
 
                         {/* Organizations */}
