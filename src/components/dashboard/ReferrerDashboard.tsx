@@ -25,7 +25,7 @@ export const ReferrerDashboard = ({ user }: ReferrerDashboardProps) => {
     loading 
   } = useReferralStore();
 
-  const [scores, setScores] = useState<Record<string, Record<string, number>>>({});
+  const [scores, setScores] = useState<Record<string, Record<string, number | ''>>>({});
   const [comments, setComments] = useState<Record<string, string>>({});
   const [submittingScores, setSubmittingScores] = useState<Set<string>>(new Set());
 
@@ -137,6 +137,12 @@ export const ReferrerDashboard = ({ user }: ReferrerDashboardProps) => {
 
       // Create scores for all parameters
       const scorePromises = Object.entries(requestScores).map(([parameterId, score]) => {
+        // Ensure score is a valid number
+        if (score === '' || typeof score !== 'number') {
+          console.error(`❌ [SUBMIT_SCORES] Invalid score for parameter ${parameterId}:`, score);
+          throw new Error(`Invalid score for parameter ${parameterId}`);
+        }
+        
         const scoreData = {
           referral_request_id: requestId,
           referrer_id: user.id,
@@ -294,7 +300,11 @@ export const ReferrerDashboard = ({ user }: ReferrerDashboardProps) => {
           ) : (
             <div className="space-y-6">
               {myReferralRequests.map((request) => (
-                <div key={request.id} className="p-6 border rounded-lg bg-white shadow-sm">
+                <div key={request.id} className={`p-6 border rounded-lg shadow-sm transition-all duration-200 ${
+                  request.status === 'scored' 
+                    ? 'bg-gray-100 opacity-60 cursor-not-allowed' 
+                    : 'bg-white hover:shadow-md'
+                }`}>
                   <div className="flex justify-between items-start mb-4">
                     <div>
                                           <div className="flex items-center space-x-3 mb-2">
