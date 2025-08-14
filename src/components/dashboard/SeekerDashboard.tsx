@@ -1,5 +1,5 @@
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -28,20 +28,20 @@ export const SeekerDashboard = ({ user }: SeekerDashboardProps) => {
     fetchReferralRequests(user.id);
   }, [user.id, fetchReferralRequests]);
 
+  const fetchJobs = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('job_requirements')
+      .select('*')
+      .eq('userId', user.id);
+
+    if (!error && data) {
+      setAllJobs(data);
+    }
+  }, [user.id]);
+
   useEffect(() => {
-    const fetchJobs = async () => {
-      const { data, error } = await supabase
-        .from('job_requirements')
-        .select('*')
-        .eq('userId', user.id);
-
-      if (!error && data) {
-        setAllJobs(data);
-      }
-    };
-
     fetchJobs();
-  }, [])
+  }, [fetchJobs])
 
   // Calculate referral metrics
   const pendingRequests = referralRequests.filter(
@@ -59,7 +59,11 @@ export const SeekerDashboard = ({ user }: SeekerDashboardProps) => {
       <JobRequirementForm 
         user={user} 
         type="seeker" 
-        onClose={() => setShowForm(false)} 
+        onClose={() => {
+          setShowForm(false);
+          // Refresh the jobs list after form closes
+          fetchJobs();
+        }} 
       />
     );
   }

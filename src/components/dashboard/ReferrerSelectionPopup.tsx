@@ -92,8 +92,25 @@ export const ReferrerSelectionPopup = ({
 
       console.log(data, error);
 
-      const { eligibleReferrers } = useReferralStore.getState();
-      setEligibleReferrers(eligibleReferrers);
+      if (error) {
+        console.error("Error fetching profiles:", error);
+        setEligibleReferrers([]);
+      } else {
+        // Transform the data to match the expected format
+        const transformedData = (data || []).map(profile => ({
+          referrer_id: profile.id,
+          referrer_name: profile.name,
+          referrer_role: profile.role,
+          referrer_experience: profile.years_of_experience || 0,
+          organization: profile.organization,
+          total_experience_years: profile.total_experience_years,
+          organizations: profile.organizations,
+          current_organization: profile.current_organization
+        }));
+        
+        console.log("Transformed data:", transformedData);
+        setEligibleReferrers(transformedData);
+      }
     } catch (error) {
       console.error("Error fetching eligible referrers:", error);
     } finally {
