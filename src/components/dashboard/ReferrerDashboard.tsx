@@ -30,6 +30,9 @@ export const ReferrerDashboard = ({ user }: ReferrerDashboardProps) => {
   const [submittingScores, setSubmittingScores] = useState<Set<string>>(new Set());
 
   useEffect(() => {
+    console.log('🏠 [REFERRER_DASHBOARD] Component mounted, fetching data for user:', user.id);
+    console.log('👤 [REFERRER_DASHBOARD] User details:', { id: user.id, name: user.name, persona: user.persona });
+    
     fetchReferralRequests(user.id);
     fetchScoringParameters();
   }, [user.id, fetchReferralRequests, fetchScoringParameters]);
@@ -38,6 +41,29 @@ export const ReferrerDashboard = ({ user }: ReferrerDashboardProps) => {
   const myReferralRequests = referralRequests.filter(req => req.referrer_id === user.id);
   const pendingRequests = myReferralRequests.filter(req => req.status === 'pending');
   const scoredRequests = myReferralRequests.filter(req => req.status === 'scored');
+  
+  // Debug logging for referral requests
+  console.log('🔍 [REFERRER_DASHBOARD] Referral requests analysis:', {
+    totalInStore: referralRequests.length,
+    myReferralRequests: myReferralRequests.length,
+    pendingRequests: pendingRequests.length,
+    scoredRequests: scoredRequests.length,
+    userId: user.id
+  });
+  
+  if (referralRequests.length > 0) {
+    console.log('📋 [REFERRER_DASHBOARD] All referral requests in store:');
+    referralRequests.forEach((req, index) => {
+      console.log(`  ${index + 1}. ID: ${req.id}, Seeker: ${req.seeker_id}, Referrer: ${req.referrer_id}, Role: ${req.job_role}, Status: ${req.status}`);
+    });
+  }
+  
+  if (myReferralRequests.length > 0) {
+    console.log('🎯 [REFERRER_DASHBOARD] My referral requests:');
+    myReferralRequests.forEach((req, index) => {
+      console.log(`  ${index + 1}. ID: ${req.id}, Seeker: ${req.seeker_id}, Role: ${req.job_role}, Status: ${req.status}`);
+    });
+  }
 
   const handleScoreChange = (requestId: string, parameterId: string, score: number) => {
     setScores(prev => ({

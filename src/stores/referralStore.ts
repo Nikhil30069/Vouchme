@@ -143,15 +143,54 @@ export const useReferralStore = create<ReferralState>((set, get) => ({
   fetchReferralRequests: async (userId: string) => {
     set({ loading: true, error: null });
     try {
-      const { data, error } = await supabase
+      console.log('🔍 [FETCH] Starting to fetch referral requests for user:', userId);
+      
+      // Build the query
+      const query = supabase
         .from('referral_requests')
         .select('*')
         .or(`seeker_id.eq.${userId},referrer_id.eq.${userId}`)
         .order('created_at', { ascending: false });
+      
+      console.log('📋 [FETCH] Query built:', {
+        table: 'referral_requests',
+        select: '*',
+        filter: `seeker_id.eq.${userId} OR referrer_id.eq.${userId}`,
+        orderBy: 'created_at DESC'
+      });
+      
+      const { data, error } = await query;
 
-      if (error) throw error;
+      console.log('📊 [FETCH] Query execution result:', { 
+        success: !error,
+        dataCount: data?.length || 0,
+        data: data,
+        error: error,
+        query: `SELECT * FROM referral_requests WHERE seeker_id = '${userId}' OR referrer_id = '${userId}' ORDER BY created_at DESC`
+      });
+
+      if (error) {
+        console.error('❌ [FETCH] Query failed:', error);
+        throw error;
+      }
+      
+      console.log('✅ [FETCH] Query successful, setting referral requests in store');
+      console.log('📋 [FETCH] Referral requests found:', data?.length || 0);
+      
+      if (data && data.length > 0) {
+        console.log('📝 [FETCH] Referral request details:');
+        data.forEach((req, index) => {
+          console.log(`  ${index + 1}. ID: ${req.id}, Seeker: ${req.seeker_id}, Referrer: ${req.referrer_id}, Role: ${req.job_role}, Status: ${req.status}`);
+        });
+      } else {
+        console.log('⚠️ [FETCH] No referral requests found for user:', userId);
+      }
+      
       set({ referralRequests: data || [] });
+      console.log('✅ [FETCH] Referral requests updated in store');
+      
     } catch (error) {
+      console.error('💥 [FETCH] Error fetching referral requests:', error);
       set({ error: error instanceof Error ? error.message : 'Failed to fetch referral requests' });
     } finally {
       set({ loading: false });
@@ -292,15 +331,53 @@ export const useReferralStore = create<ReferralState>((set, get) => ({
   createReferralRequest: async (data) => {
     set({ loading: true, error: null });
     try {
-      const { error } = await supabase
-        .from('referral_requests')
-        .insert(data);
-
-      if (error) throw error;
+      console.log('🚀 [REFERRAL] Starting referral request creation...');
+      console.log('📝 [REFERRAL] Request data:', JSON.stringify(data, null, 2));
       
-      // Refresh referral requests
+      // Validate required fields
+      if (!data.seeker_id || !data.referrer_id || !data.job_requirement_id || !data.job_role) {
+        console.error('❌ [REFERRAL] Missing required fields:', {
+          seeker_id: !!data.seeker_id,
+          referrer_id: !!data.referrer_id,
+          job_requirement_id: !!data.job_requirement_id,
+          job_role: !!data.job_role
+        });
+        throw new Error('Missing required fields for referral request');
+      }
+      
+      console.log('✅ [REFERRAL] All required fields present, proceeding with database insert...');
+      
+      const { data: result, error } = await supabase
+        .from('referral_requests')
+        .insert(data)
+        .select();
+
+      console.log('📊 [REFERRAL] Database insert result:', { 
+        success: !error, 
+        result: result, 
+        error: error,
+        insertedId: result?.[0]?.id 
+      });
+
+      if (error) {
+        console.error('❌ [REFERRAL] Database insert failed:', error);
+        throw error;
+      }
+      
+      console.log('✅ [REFERRAL] Referral request created successfully with ID:', result?.[0]?.id);
+      
+      // Refresh referral requests for both seeker and referrer
+      console.log('🔄 [REFERRAL] Refreshing referral requests for seeker:', data.seeker_id);
       await get().fetchReferralRequests(data.seeker_id);
+      
+      console.log('🔄 [REFERRAL] Refreshing referral requests for referrer:', data.referrer_id);
+      await get().fetchReferralRequests(data.referrer_id);
+      
+      console.log('✅ [REFERRAL] Referral requests refreshed for both users');
+      console.log('🎉 [REFERRAL] Referral request process completed successfully!');
+      
     } catch (error) {
+      console.error('💥 [REFERRAL] Error creating referral request:', error);
       set({ error: error instanceof Error ? error.message : 'Failed to create referral request' });
     } finally {
       set({ loading: false });
