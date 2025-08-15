@@ -91,6 +91,15 @@ export const ReferrerDashboard = ({ user }: ReferrerDashboardProps) => {
   };
 
   const handleSubmitScore = async (requestId: string) => {
+    // Prevent multiple submissions for the same request
+    if (submittingScores.has(requestId)) {
+      console.log('⚠️ [SUBMIT_SCORES] Already submitting scores for request:', requestId);
+      return;
+    }
+    
+    console.log('🔒 [SUBMIT_SCORES] Setting submission state for request:', requestId);
+    setSubmittingScores(prev => new Set(prev).add(requestId));
+    
     console.log('🚀 [SUBMIT_SCORES] Starting score submission for request:', requestId);
     
     const requestScores = scores[requestId];
@@ -122,8 +131,6 @@ export const ReferrerDashboard = ({ user }: ReferrerDashboardProps) => {
     }
 
     console.log('✅ [SUBMIT_SCORES] All validations passed, proceeding with submission');
-
-    setSubmittingScores(prev => new Set(prev).add(requestId));
 
     try {
       const request = myReferralRequests.find(req => req.id === requestId);
@@ -157,7 +164,15 @@ export const ReferrerDashboard = ({ user }: ReferrerDashboardProps) => {
       });
 
       console.log('🔄 [SUBMIT_SCORES] Submitting all scores...');
-      await Promise.all(scorePromises);
+      const results = await Promise.allSettled(scorePromises);
+      
+      // Check if any scores failed to submit
+      const failedScores = results.filter(result => result.status === 'rejected');
+      
+      if (failedScores.length > 0) {
+        console.error('❌ [SUBMIT_SCORES] Some scores failed to submit:', failedScores);
+        throw new Error(`${failedScores.length} scores failed to submit`);
+      }
       
       console.log('✅ [SUBMIT_SCORES] All scores submitted successfully!');
       toast.success("Scores submitted successfully!");
@@ -402,7 +417,14 @@ export const ReferrerDashboard = ({ user }: ReferrerDashboardProps) => {
                       </div>
 
                       <Button
-                        onClick={() => handleSubmitScore(request.id)}
+                        onClick={() => {
+                          // Prevent multiple clicks
+                          if (submittingScores.has(request.id)) {
+                            console.log('⚠️ [SUBMIT_SCORES] Already submitting, ignoring click');
+                            return;
+                          }
+                          handleSubmitScore(request.id);
+                        }}
                         disabled={submittingScores.has(request.id)}
                         className="w-full"
                       >
