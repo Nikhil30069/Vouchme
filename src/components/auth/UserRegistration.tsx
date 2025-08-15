@@ -76,18 +76,29 @@ export const UserRegistration = ({ phoneNumber, password }: UserRegistrationProp
     setIsLoading(true);
 
     try {
-    // Generate a unique id if needed, or let DB handle it
-    const userObj: User & { password: string } = {
-      id: crypto.randomUUID(), // Generate a unique ID
-      name: formData.name,
-      phone: phoneNumber,
-      email: formData.email,
-      persona: formData.persona,
-      workExperience:
-        formData.persona === "referrer" ? formData.workExperience : undefined,
-      createdAt: `${new Date()}`,
-      password: formData.password,
-    };
+      // Validate referrer experience requirement
+      if (formData.persona === "referrer" && formData.workExperience.years < 2) {
+        toast({
+          title: "Experience Required",
+          description: "Referrers must have at least 2 years of work experience to join our platform.",
+          variant: "destructive",
+        });
+        setIsLoading(false);
+        return;
+      }
+
+      // Generate a unique id if needed, or let DB handle it
+      const userObj: User & { password: string } = {
+        id: crypto.randomUUID(), // Generate a unique ID
+        name: formData.name,
+        phone: phoneNumber,
+        email: formData.email,
+        persona: formData.persona,
+        workExperience:
+          formData.persona === "referrer" ? formData.workExperience : undefined,
+        createdAt: `${new Date()}`,
+        password: formData.password,
+      };
 
     const { error: insertError, data } = await supabase
       .from("profiles")
@@ -233,11 +244,11 @@ export const UserRegistration = ({ phoneNumber, password }: UserRegistrationProp
 
               <div className="space-y-2">
                 <label className="text-sm font-medium text-gray-700">
-                  Years of Experience
+                  Years of Experience <span className="text-red-500">*</span>
                 </label>
                 <Input
                   type="number"
-                  placeholder="Enter years of experience"
+                  placeholder="Enter years of experience (minimum 2)"
                   value={formData.workExperience.years}
                   onChange={(e) =>
                     setFormData({
@@ -248,10 +259,13 @@ export const UserRegistration = ({ phoneNumber, password }: UserRegistrationProp
                       },
                     })
                   }
-                  min="0"
+                  min="2"
                   max="50"
                   className="h-11"
                 />
+                <p className="text-xs text-gray-500">
+                  Minimum 2 years of experience required for referrers
+                </p>
               </div>
 
               <div className="space-y-2">
