@@ -1,6 +1,13 @@
 import { useState } from "react";
+import { motion } from "framer-motion";
+import { ArrowLeft, FileText, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -10,24 +17,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ArrowLeft, Upload } from "lucide-react";
-import { User } from "@/stores/authStore";
-import { useJobStore } from "@/stores/jobStore";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { JOB_ROLES } from "@/constants/roles";
+import type { User } from "@/stores/authStore";
 
 interface JobRequirementFormProps {
   user: User;
-  type: "seeker" | "recruiter" | "referrer" | "";
+  type: "seeker" | "recruiter" | "referrer";
   onClose: () => void;
 }
 
-export const JobRequirementForm = ({
-  user,
-  type,
-  onClose,
-}: JobRequirementFormProps) => {
+export const JobRequirementForm = ({ user, type, onClose }: JobRequirementFormProps) => {
+  const { toast } = useToast();
   const [formData, setFormData] = useState({
     role: "",
     yearsOfExperience: "",
@@ -37,14 +39,13 @@ export const JobRequirementForm = ({
     salaryBracketMax: "",
     noticePeriod: "",
     readyToJoinIn: "",
-    resumeUrl: "",
   });
-
-  const [isLoading, setIsLoading] = useState(false);
   const [resumeFile, setResumeFile] = useState<File | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const { addJobRequirement } = useJobStore();
-  const { toast } = useToast();
+  const handleInputChange = (field: string, value: string) => {
+    setFormData((p) => ({ ...p, [field]: value }));
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,26 +53,18 @@ export const JobRequirementForm = ({
 
     try {
       let uploadedResumeUrl = "";
-      console.log (resumeFile, uploadedResumeUrl)
       if (resumeFile) {
         const fileExt = resumeFile.name.split(".").pop();
-        const filePath = `resumes/${user.id}/${user.name}/${Date.now()}.${fileExt}`;
-        console.log (filePath)
+        const filePath = `${user.id}/${Date.now()}.${fileExt}`;
         const { error: uploadError } = await supabase.storage
           .from("resumes")
           .upload(filePath, resumeFile, { upsert: true, cacheControl: "3600" });
-
         if (uploadError) throw uploadError;
-        console.log (uploadError)
-        const { data: publicUrlData } = supabase.storage
-          .from("resumes")
-          .getPublicUrl(filePath);
-        console.log (publicUrlData)
-        uploadedResumeUrl = publicUrlData.publicUrl;
+        const { data } = supabase.storage.from("resumes").getPublicUrl(filePath);
+        uploadedResumeUrl = data.publicUrl;
       }
 
-      // Construct the job data
-      const jobData = {
+      const jobData: Record<string, unknown> = {
         userId: user.id,
         role: formData.role,
         yearsOfExperience: parseInt(formData.yearsOfExperience),
@@ -79,14 +72,12 @@ export const JobRequirementForm = ({
         createdAt: new Date().toISOString(),
       };
 
-      console.log (jobData)
-
       if (type === "seeker") {
         Object.assign(jobData, {
           currentCtc: parseInt(formData.currentCtc),
           expectedCtc: parseInt(formData.expectedCtc),
           noticePeriod: parseInt(formData.noticePeriod),
-          resumeUrl: uploadedResumeUrl,
+          resumeUrl: uploadedResumeUrl || null,
         });
       } else if (type === "recruiter") {
         Object.assign(jobData, {
@@ -97,23 +88,20 @@ export const JobRequirementForm = ({
       }
 
       const { error: insertError } = await supabase
-        .from("job_requirements") // or your actual table
-        .insert([jobData]);
-
+        .from("job_requirements")
+        .insert([jobData as any]);
       if (insertError) throw insertError;
 
       toast({
-        title: "Success",
-        description: "Job requirement posted successfully!",
+        title: "Saved",
+        description: "Your requirement is live.",
       });
-
-      addJobRequirement(jobData); // your local store (optional)
       onClose();
-    } catch (error) {
-      console.error(error);
+    } catch (err) {
+      console.error(err);
       toast({
-        title: "Error",
-        description: "Failed to post job requirement.",
+        title: "Couldn't save",
+        description: "Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -121,38 +109,44 @@ export const JobRequirementForm = ({
     }
   };
 
-  const handleInputChange = (field: string, value: string) => {
-    setFormData((prev) => ({ ...prev, [field]: value }));
-  };
-
   return (
-    <div className="max-w-2xl mx-auto">
-      <Card>
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="mx-auto max-w-3xl"
+    >
+      <Card className="rounded-2xl border-slate-200/70 bg-white shadow-sm">
         <CardHeader>
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" size="sm" onClick={onClose}>
-              <ArrowLeft className="w-4 h-4" />
+          <div className="flex items-center gap-3">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onClose}
+              className="rounded-full"
+            >
+              <ArrowLeft className="h-4 w-4" />
             </Button>
             <CardTitle>
-              {type === "seeker" ? "Post Job Requirement" : "Post Job Opening"}
+              {type === "seeker" ? "Post a job requirement" : "Post a job opening"}
             </CardTitle>
           </div>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="role">Role</Label>
                 <Select
-                  onValueChange={(value) => handleInputChange("role", value)}
+                  value={formData.role}
+                  onValueChange={(v) => handleInputChange("role", v)}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className="h-11">
                     <SelectValue placeholder="Select role" />
                   </SelectTrigger>
                   <SelectContent>
-                    {JOB_ROLES.map((role) => (
-                      <SelectItem key={role.value} value={role.value}>
-                        {role.label}
+                    {JOB_ROLES.map((r) => (
+                      <SelectItem key={r.value} value={r.value}>
+                        {r.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -160,14 +154,16 @@ export const JobRequirementForm = ({
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="experience">Years of Experience</Label>
+                <Label htmlFor="experience">Years of experience</Label>
                 <Input
+                  id="experience"
                   type="number"
                   value={formData.yearsOfExperience}
                   onChange={(e) =>
                     handleInputChange("yearsOfExperience", e.target.value)
                   }
-                  placeholder="e.g., 3"
+                  placeholder="e.g. 3"
+                  className="h-11"
                   required
                 />
               </div>
@@ -175,126 +171,156 @@ export const JobRequirementForm = ({
 
             {type === "seeker" && (
               <>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="currentCtc">Current CTC (₹)</Label>
                     <Input
+                      id="currentCtc"
                       type="number"
                       value={formData.currentCtc}
                       onChange={(e) =>
                         handleInputChange("currentCtc", e.target.value)
                       }
-                      placeholder="e.g., 800000"
+                      placeholder="e.g. 800000"
+                      className="h-11"
                       required
                     />
                   </div>
-
                   <div className="space-y-2">
                     <Label htmlFor="expectedCtc">Expected CTC (₹)</Label>
                     <Input
+                      id="expectedCtc"
                       type="number"
                       value={formData.expectedCtc}
                       onChange={(e) =>
                         handleInputChange("expectedCtc", e.target.value)
                       }
-                      placeholder="e.g., 1200000"
+                      placeholder="e.g. 1200000"
+                      className="h-11"
                       required
                     />
                   </div>
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="noticePeriod">Notice Period (Days)</Label>
+                  <Label htmlFor="noticePeriod">Notice period (days)</Label>
                   <Input
+                    id="noticePeriod"
                     type="number"
                     value={formData.noticePeriod}
                     onChange={(e) =>
                       handleInputChange("noticePeriod", e.target.value)
                     }
-                    placeholder="e.g., 30"
+                    placeholder="e.g. 30"
+                    className="h-11"
                     required
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="resume">Resume Upload</Label>
-                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
-                    <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                    <p className="text-sm text-gray-600">
-                      Upload your resume (PDF)
-                    </p>
-                    <Input
+                  <Label>Resume</Label>
+                  <label className="flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50/50 p-6 text-center transition hover:border-brand-300 hover:bg-brand-50/30">
+                    <Upload className="mb-2 h-7 w-7 text-slate-400" />
+                    <span className="text-sm font-medium text-slate-700">
+                      {resumeFile ? resumeFile.name : "Upload your resume (PDF)"}
+                    </span>
+                    <span className="mt-1 text-xs text-slate-500">
+                      Click or drop a file
+                    </span>
+                    <input
                       type="file"
                       accept=".pdf"
-                      className="mt-2"
+                      className="hidden"
                       onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) {
-                          setResumeFile(file);
-                        }
+                        const f = e.target.files?.[0];
+                        if (f) setResumeFile(f);
                       }}
                     />
-                  </div>
+                  </label>
+                  {resumeFile && (
+                    <div className="flex items-center gap-2 text-xs text-slate-500">
+                      <FileText className="h-3.5 w-3.5" />
+                      Ready to upload: {resumeFile.name}
+                    </div>
+                  )}
                 </div>
               </>
             )}
 
             {type === "recruiter" && (
               <>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div className="space-y-2">
-                    <Label htmlFor="salaryMin">Salary Min (₹)</Label>
+                    <Label htmlFor="salaryMin">Salary min (₹)</Label>
                     <Input
+                      id="salaryMin"
                       type="number"
                       value={formData.salaryBracketMin}
                       onChange={(e) =>
                         handleInputChange("salaryBracketMin", e.target.value)
                       }
-                      placeholder="e.g., 800000"
+                      placeholder="e.g. 800000"
+                      className="h-11"
                       required
                     />
                   </div>
-
                   <div className="space-y-2">
-                    <Label htmlFor="salaryMax">Salary Max (₹)</Label>
+                    <Label htmlFor="salaryMax">Salary max (₹)</Label>
                     <Input
+                      id="salaryMax"
                       type="number"
                       value={formData.salaryBracketMax}
                       onChange={(e) =>
                         handleInputChange("salaryBracketMax", e.target.value)
                       }
-                      placeholder="e.g., 1500000"
+                      placeholder="e.g. 1500000"
+                      className="h-11"
                       required
                     />
                   </div>
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="readyToJoin">Ready to Join in (Days)</Label>
+                  <Label htmlFor="readyToJoin">Ready to join in (days)</Label>
                   <Input
+                    id="readyToJoin"
                     type="number"
                     value={formData.readyToJoinIn}
                     onChange={(e) =>
                       handleInputChange("readyToJoinIn", e.target.value)
                     }
-                    placeholder="e.g., 45"
+                    placeholder="e.g. 45"
+                    className="h-11"
                     required
                   />
                 </div>
               </>
             )}
 
-            <div className="flex gap-4">
-              <Button type="button" variant="outline" onClick={onClose}>
+            <div className="flex justify-end gap-3 border-t border-slate-200 pt-6">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onClose}
+                className="rounded-xl"
+              >
                 Cancel
               </Button>
-              <Button type="submit">
-                {type === "seeker" ? "Post Requirement" : "Post Job Opening"}
+              <Button
+                type="submit"
+                disabled={isLoading}
+                className="rounded-xl bg-slate-900 text-white hover:bg-slate-800"
+              >
+                {isLoading
+                  ? "Saving…"
+                  : type === "seeker"
+                  ? "Post requirement"
+                  : "Post opening"}
               </Button>
             </div>
           </form>
         </CardContent>
       </Card>
-    </div>
+    </motion.div>
   );
 };

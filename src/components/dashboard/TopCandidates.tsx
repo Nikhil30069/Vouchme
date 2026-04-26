@@ -216,7 +216,7 @@ export const TopCandidates = ({ user, jobPostingId, onClose }: TopCandidatesProp
                       <div className="flex items-center space-x-4 text-sm text-gray-600 mb-3">
                         <div className="flex items-center space-x-1">
                           <Briefcase className="w-4 h-4" />
-                          <span>{JOB_ROLES.find((roleObj) => roleObj.value === candidate.seeker_role).label}</span>
+                          <span>{JOB_ROLES.find((roleObj) => roleObj.value === candidate.seeker_role)?.label ?? candidate.seeker_role}</span>
                         </div>
                         <div className="flex items-center space-x-1">
                           <Star className="w-4 h-4" />

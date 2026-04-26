@@ -1,9 +1,22 @@
-
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
+import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Users, Search, Calendar, Briefcase, TrendingUp } from "lucide-react";
+import {
+  Briefcase,
+  Calendar,
+  Plus,
+  Search,
+  TrendingUp,
+  Users,
+} from "lucide-react";
 import { User } from "@/stores/authStore";
 import { useReferralStore } from "@/stores/referralStore";
 import { TopCandidates } from "./TopCandidates";
@@ -14,12 +27,13 @@ interface RecruiterDashboardProps {
   user: User;
 }
 
+const roleLabel = (value: string) =>
+  JOB_ROLES.find((r) => r.value === value)?.label ?? value;
+
 export const RecruiterDashboard = ({ user }: RecruiterDashboardProps) => {
   const [showJobPostingForm, setShowJobPostingForm] = useState(false);
   const [showTopCandidates, setShowTopCandidates] = useState(false);
   const [selectedJobPostingId, setSelectedJobPostingId] = useState<string | null>(null);
-  const [editingJobId, setEditingJobId] = useState<string | null>(null);
-  
   const { fetchJobPostings, jobPostings, updateJobPosting } = useReferralStore();
 
   useEffect(() => {
@@ -29,26 +43,24 @@ export const RecruiterDashboard = ({ user }: RecruiterDashboardProps) => {
   const handleToggleJobStatus = async (jobId: string, currentStatus: boolean) => {
     try {
       await updateJobPosting(jobId, { is_active: !currentStatus });
-      // State will be updated automatically by the updateJobPosting function
     } catch (error) {
-      console.error('Failed to toggle job status:', error);
+      console.error("Failed to toggle job status:", error);
     }
   };
-
-  const handleEditJob = (jobId: string) => {
-    setEditingJobId(jobId);
-    setShowJobPostingForm(true);
-  };
-
-
 
   if (showJobPostingForm) {
     return (
       <div className="space-y-6">
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold">Create Job Posting</h1>
-          <Button variant="outline" onClick={() => setShowJobPostingForm(false)}>
-            Back to Dashboard
+          <h1 className="font-display text-2xl font-bold tracking-tight">
+            Create job posting
+          </h1>
+          <Button
+            variant="outline"
+            onClick={() => setShowJobPostingForm(false)}
+            className="rounded-xl"
+          >
+            Back to dashboard
           </Button>
         </div>
         <JobPostingForm user={user} onClose={() => setShowJobPostingForm(false)} />
@@ -58,180 +70,222 @@ export const RecruiterDashboard = ({ user }: RecruiterDashboardProps) => {
 
   if (showTopCandidates && selectedJobPostingId) {
     return (
-      <TopCandidates 
-        user={user} 
+      <TopCandidates
+        user={user}
         jobPostingId={selectedJobPostingId}
         onClose={() => {
           setShowTopCandidates(false);
           setSelectedJobPostingId(null);
-        }} 
+        }}
       />
     );
   }
 
   return (
     <div className="space-y-8">
-      {/* Welcome Section */}
-      <div className="bg-gradient-to-r from-green-600 to-green-700 rounded-2xl p-8 text-white">
-        <h1 className="text-3xl font-bold mb-2">Welcome back, {user.name}!</h1>
-        <p className="text-green-100 mb-6">Find the perfect candidates for your team</p>
-        <div className="flex flex-wrap gap-4">
-          <Button 
-            onClick={() => setShowJobPostingForm(true)}
-            className="bg-white text-green-600 hover:bg-green-50"
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            Create Job Posting
-          </Button>
+      <motion.section
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-emerald-600 via-teal-600 to-green-600 p-8 text-white shadow-soft"
+      >
+        <div className="absolute -right-12 -top-12 h-48 w-48 rounded-full bg-white/10 blur-3xl" />
+        <div className="absolute -bottom-16 -left-16 h-56 w-56 rounded-full bg-emerald-300/20 blur-3xl" />
+        <div className="relative">
+          <div className="text-xs font-medium uppercase tracking-wider text-white/70">
+            Recruiter workspace
+          </div>
+          <h1 className="mt-1 font-display text-3xl font-extrabold tracking-tight md:text-4xl">
+            Welcome back, {user.name?.split(" ")[0] || "there"}.
+          </h1>
+          <p className="mt-2 max-w-xl text-white/85">
+            Find karma-verified candidates, post openings and unlock contacts only when
+            you're truly interested.
+          </p>
+          <div className="mt-6 flex flex-wrap gap-3">
+            <Button
+              onClick={() => setShowJobPostingForm(true)}
+              className="h-11 rounded-xl bg-white px-5 text-emerald-700 hover:bg-emerald-50"
+            >
+              <Plus className="mr-2 h-4 w-4" /> Create job posting
+            </Button>
+          </div>
         </div>
+      </motion.section>
+
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+        <StatCard
+          icon={Briefcase}
+          label="Job postings"
+          value={jobPostings.length}
+          tone="emerald"
+        />
+        <StatCard
+          icon={TrendingUp}
+          label="Active postings"
+          value={jobPostings.filter((j) => j.is_active).length}
+          tone="blue"
+        />
+        <StatCard icon={Users} label="Candidates surfaced" value={0} tone="purple" />
+        <StatCard
+          icon={Calendar}
+          label="Interviews scheduled"
+          value={0}
+          tone="amber"
+        />
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Job Postings</p>
-                <p className="text-2xl font-bold text-gray-900">{jobPostings.length}</p>
-              </div>
-              <div className="bg-green-100 p-3 rounded-full">
-                <Briefcase className="w-6 h-6 text-green-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Active Postings</p>
-                <p className="text-2xl font-bold text-gray-900">
-                  {jobPostings.filter(job => job.is_active).length}
-                </p>
-              </div>
-              <div className="bg-blue-100 p-3 rounded-full">
-                <TrendingUp className="w-6 h-6 text-blue-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Candidates Found</p>
-                <p className="text-2xl font-bold text-gray-900">0</p>
-              </div>
-              <div className="bg-purple-100 p-3 rounded-full">
-                <Users className="w-6 h-6 text-purple-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Interviews Scheduled</p>
-                <p className="text-2xl font-bold text-gray-900">0</p>
-              </div>
-              <div className="bg-yellow-100 p-3 rounded-full">
-                <Calendar className="w-6 h-6 text-yellow-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Job Postings */}
-      <Card>
+      <Card className="rounded-2xl border-slate-200/70 bg-white shadow-sm">
         <CardHeader>
-          <CardTitle>Your Job Postings</CardTitle>
-          <CardDescription>Manage your job postings and find top candidates</CardDescription>
+          <CardTitle>Your job postings</CardTitle>
+          <CardDescription>
+            Discover the top three candidates for each role, ranked by karma.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {jobPostings.length === 0 ? (
-            <div className="text-center py-12">
-              <Briefcase className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">No job postings yet</h3>
-              <p className="text-gray-500 mb-4">Start by creating your first job posting to find candidates</p>
-              <Button onClick={() => setShowJobPostingForm(true)}>
-                <Plus className="w-4 h-4 mr-2" />
-                Create Job Posting
+            <div className="rounded-2xl border border-dashed border-slate-300 p-10 text-center">
+              <Briefcase className="mx-auto h-10 w-10 text-slate-400" />
+              <h3 className="mt-3 font-display text-lg font-semibold text-slate-900">
+                No postings yet
+              </h3>
+              <p className="mt-1 text-sm text-slate-500">
+                Create your first posting to start matching with karma-verified talent.
+              </p>
+              <Button
+                onClick={() => setShowJobPostingForm(true)}
+                className="mt-4 rounded-xl bg-slate-900 text-white hover:bg-slate-800"
+              >
+                <Plus className="mr-2 h-4 w-4" /> Create posting
               </Button>
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-3">
               {jobPostings.map((job) => (
-                <div key={job.id} className="p-4 border rounded-lg hover:bg-gray-50 transition-colors">
-                  <div className="flex justify-between items-start mb-2">
+                <motion.div
+                  key={job.id}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="rounded-2xl border border-slate-200/70 bg-white p-4 transition hover:shadow-sm"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                      <p className="text-sm text-gray-600">{JOB_ROLES.find((roleObj) => roleObj.value === job.role).label}</p>
+                      <div className="font-semibold text-slate-900">
+                        {roleLabel(job.role)}
+                      </div>
+                      <div className="text-xs text-slate-500">
+                        Posted{" "}
+                        {job.created_at
+                          ? new Date(job.created_at).toLocaleDateString()
+                          : "recently"}
+                      </div>
                     </div>
-                    <div className="flex items-center space-x-2">
-                      <Badge variant="outline">{job.years_of_experience}+ years exp</Badge>
-                      <Badge variant={job.is_active ? "default" : "secondary"}>
-                        {job.is_active ? "Active" : "Inactive"}
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="border-slate-200">
+                        {job.years_of_experience}+ years
+                      </Badge>
+                      <Badge
+                        className={
+                          job.is_active
+                            ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-100"
+                            : "bg-slate-100 text-slate-600 hover:bg-slate-100"
+                        }
+                      >
+                        {job.is_active ? "Active" : "Paused"}
                       </Badge>
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm text-gray-600 mb-4">
-                    <div>
-                      <span className="font-medium">Salary Range:</span> 
-                      {job.salary_min && job.salary_max 
-                        ? ` ₹${job.salary_min.toLocaleString()} - ₹${job.salary_max.toLocaleString()}`
-                        : " Not specified"
+                  <div className="mt-4 grid grid-cols-2 gap-3 text-sm text-slate-600 md:grid-cols-3">
+                    <Stat
+                      label="Salary range"
+                      value={
+                        job.salary_min && job.salary_max
+                          ? `₹${job.salary_min.toLocaleString()} – ₹${job.salary_max.toLocaleString()}`
+                          : "—"
                       }
-                    </div>
-                    <div>
-                      <span className="font-medium">Posted:</span> {new Date(job.created_at).toLocaleDateString()}
-                    </div>
-                    <div>
-                      <span className="font-medium">Requirements:</span> {job.requirements?.length || 0} items
-                    </div>
-                    <div>
-                      <span className="font-medium">Status:</span> {job.is_active ? "Active" : "Inactive"}
-                    </div>
+                    />
+                    <Stat
+                      label="Requirements"
+                      value={`${job.requirements?.length ?? 0} items`}
+                    />
+                    <Stat label="Status" value={job.is_active ? "Active" : "Paused"} />
                   </div>
-                  <div className="flex items-center space-x-3">
+                  <div className="mt-4 flex flex-wrap items-center gap-2">
                     <Button
                       onClick={() => {
                         setSelectedJobPostingId(job.id);
                         setShowTopCandidates(true);
                       }}
                       size="sm"
-                      className="bg-blue-600 hover:bg-blue-700"
+                      className="rounded-lg bg-slate-900 text-white hover:bg-slate-800"
                     >
-                      <Search className="w-4 h-4 mr-2" />
-                      Find Top Candidates
+                      <Search className="mr-2 h-4 w-4" /> Find top 3
                     </Button>
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      onClick={() => handleEditJob(job.id)}
-                    >
-                      Edit Posting
-                    </Button>
-                    <Button 
-                      variant="outline" 
+                    <Button
+                      variant="outline"
                       size="sm"
                       onClick={() => handleToggleJobStatus(job.id, job.is_active)}
+                      className="rounded-lg"
                     >
-                      {job.is_active ? "Deactivate" : "Activate"}
+                      {job.is_active ? "Pause" : "Activate"}
                     </Button>
                   </div>
-                </div>
+                </motion.div>
               ))}
             </div>
           )}
         </CardContent>
       </Card>
-
-
     </div>
+  );
+};
+
+const Stat = ({ label, value }: { label: string; value: string }) => (
+  <div>
+    <div className="text-xs uppercase tracking-wide text-slate-400">{label}</div>
+    <div className="text-sm font-semibold text-slate-900">{value}</div>
+  </div>
+);
+
+const toneClasses: Record<string, { bg: string; text: string; ring: string }> = {
+  blue: { bg: "bg-blue-50", text: "text-blue-600", ring: "ring-blue-100" },
+  emerald: { bg: "bg-emerald-50", text: "text-emerald-600", ring: "ring-emerald-100" },
+  amber: { bg: "bg-amber-50", text: "text-amber-600", ring: "ring-amber-100" },
+  purple: { bg: "bg-purple-50", text: "text-purple-600", ring: "ring-purple-100" },
+};
+
+const StatCard = ({
+  icon: Icon,
+  label,
+  value,
+  tone,
+}: {
+  icon: typeof Briefcase;
+  label: string;
+  value: number;
+  tone: keyof typeof toneClasses;
+}) => {
+  const t = toneClasses[tone];
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-sm"
+    >
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="text-xs font-medium uppercase tracking-wider text-slate-500">
+            {label}
+          </div>
+          <div className="mt-1 font-display text-2xl font-bold text-slate-900">
+            {value}
+          </div>
+        </div>
+        <div
+          className={`grid h-10 w-10 place-items-center rounded-xl ${t.bg} ${t.text} ring-4 ${t.ring}`}
+        >
+          <Icon className="h-5 w-5" />
+        </div>
+      </div>
+    </motion.div>
   );
 };

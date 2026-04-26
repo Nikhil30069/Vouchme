@@ -1,27 +1,56 @@
-
-import { useState, useEffect, useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Briefcase, TrendingUp, Clock, Send, Users, Star } from "lucide-react";
+import {
+  Briefcase,
+  Clock,
+  Plus,
+  Send,
+  Star,
+  Users,
+} from "lucide-react";
 import { User } from "@/stores/authStore";
-import { useJobStore } from "@/stores/jobStore";
 import { useReferralStore } from "@/stores/referralStore";
 import { JobRequirementForm } from "./JobRequirementForm";
 import { StrengthScore } from "./StrengthScore";
 import { ReferrerSelectionPopup } from "./ReferrerSelectionPopup";
-import { supabase } from "@/lib/supabaseClient";
+import { supabase } from "@/integrations/supabase/client";
 import { JOB_ROLES } from "@/constants/roles";
 
 interface SeekerDashboardProps {
   user: User;
 }
 
+type SeekerJob = {
+  id: string;
+  role: string;
+  yearsOfExperience: number;
+  currentCtc: number | null;
+  expectedCtc: number | null;
+  noticePeriod: number | null;
+  createdAt: string | null;
+};
+
+const roleLabel = (value: string) =>
+  JOB_ROLES.find((r) => r.value === value)?.label ?? value;
+
 export const SeekerDashboard = ({ user }: SeekerDashboardProps) => {
   const [showForm, setShowForm] = useState(false);
   const [showReferrerPopup, setShowReferrerPopup] = useState(false);
-  const [selectedJob, setSelectedJob] = useState<{ id: string; role: string; experience: number } | null>(null);
-  const [allJobs, setAllJobs] = useState<any[]>([]);
+  const [selectedJob, setSelectedJob] = useState<{
+    id: string;
+    role: string;
+    experience: number;
+  } | null>(null);
+  const [allJobs, setAllJobs] = useState<SeekerJob[]>([]);
   const { fetchReferralRequests, referralRequests } = useReferralStore();
 
   useEffect(() => {
@@ -30,242 +59,243 @@ export const SeekerDashboard = ({ user }: SeekerDashboardProps) => {
 
   const fetchJobs = useCallback(async () => {
     const { data, error } = await supabase
-      .from('job_requirements')
-      .select('*')
-      .eq('userId', user.id);
-
-    if (!error && data) {
-      setAllJobs(data);
-    }
+      .from("job_requirements")
+      .select("*")
+      .eq("userId", user.id)
+      .eq("type", "seeker");
+    if (!error && data) setAllJobs(data as unknown as SeekerJob[]);
   }, [user.id]);
 
   useEffect(() => {
     fetchJobs();
-  }, [fetchJobs])
+  }, [fetchJobs]);
 
-  // Calculate referral metrics
-  const pendingRequests = referralRequests.filter(
-    req => req.seeker_id === user.id && req.status === 'pending'
+  const myReferralRequests = referralRequests.filter(
+    (req) => req.seeker_id === user.id
+  );
+  const pendingRequests = myReferralRequests.filter(
+    (req) => req.status === "pending"
   ).length;
-  
-  const scoredRequests = referralRequests.filter(
-    req => req.seeker_id === user.id && req.status === 'scored'
+  const scoredRequests = myReferralRequests.filter(
+    (req) => req.status === "scored"
   ).length;
-
   const totalRequests = pendingRequests + scoredRequests;
 
   if (showForm) {
     return (
-      <JobRequirementForm 
-        user={user} 
-        type="seeker" 
+      <JobRequirementForm
+        user={user}
+        type="seeker"
         onClose={() => {
           setShowForm(false);
-          // Refresh the jobs list after form closes
           fetchJobs();
-        }} 
+        }}
       />
     );
   }
 
-
-
   return (
     <div className="space-y-8">
-      {/* Welcome Section */}
-      <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-2xl p-8 text-white">
-        <h1 className="text-3xl font-bold mb-2">Welcome back, {user.name}!</h1>
-        <p className="text-blue-100 mb-6">Ready to find your next opportunity?</p>
-        <div className="flex flex-wrap gap-4">
-          <Button 
-            onClick={() => setShowForm(true)}
-            className="bg-white text-blue-600 hover:bg-blue-50"
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            Post New Job Requirement
-          </Button>
-          <Button 
-            onClick={() => setShowReferrerPopup(true)}
-            variant="outline"
-            className="bg-white text-blue-600 hover:bg-blue-50"
-          >
-            <Send className="w-4 h-4 mr-2" />
-            Send Referral Requests
-          </Button>
+      <motion.section
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-600 p-8 text-white shadow-soft"
+      >
+        <div className="absolute -right-12 -top-12 h-48 w-48 rounded-full bg-white/10 blur-3xl" />
+        <div className="absolute -bottom-16 -left-16 h-56 w-56 rounded-full bg-fuchsia-300/20 blur-3xl" />
+        <div className="relative">
+          <div className="text-xs font-medium uppercase tracking-wider text-white/70">
+            Seeker workspace
+          </div>
+          <h1 className="mt-1 font-display text-3xl font-extrabold tracking-tight md:text-4xl">
+            Welcome back, {user.name?.split(" ")[0] || "there"}.
+          </h1>
+          <p className="mt-2 max-w-xl text-white/85">
+            Track your applications, build your karma score with peer reviews, and stay
+            visible to top recruiters.
+          </p>
+          <div className="mt-6 flex flex-wrap gap-3">
+            <Button
+              onClick={() => setShowForm(true)}
+              className="h-11 rounded-xl bg-white px-5 text-blue-700 hover:bg-blue-50"
+            >
+              <Plus className="mr-2 h-4 w-4" /> Post a requirement
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (allJobs[0]) {
+                  setSelectedJob({
+                    id: allJobs[0].id,
+                    role: allJobs[0].role,
+                    experience: allJobs[0].yearsOfExperience,
+                  });
+                  setShowReferrerPopup(true);
+                }
+              }}
+              disabled={allJobs.length === 0}
+              className="h-11 rounded-xl border-white/40 bg-white/10 text-white hover:bg-white/20"
+            >
+              <Send className="mr-2 h-4 w-4" /> Request a review
+            </Button>
+          </div>
         </div>
-      </div>
+      </motion.section>
 
-      {/* Strength Score Section */}
       <StrengthScore user={user} />
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Total Applications</p>
-                <p className="text-2xl font-bold text-gray-900">{allJobs.length}</p>
-              </div>
-              <div className="bg-blue-100 p-3 rounded-full">
-                <Briefcase className="w-6 h-6 text-blue-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Referral Requests</p>
-                <p className="text-2xl font-bold text-gray-900">{totalRequests}</p>
-              </div>
-              <div className="bg-green-100 p-3 rounded-full">
-                <Send className="w-6 h-6 text-green-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Pending Reviews</p>
-                <p className="text-2xl font-bold text-gray-900">{pendingRequests}</p>
-              </div>
-              <div className="bg-yellow-100 p-3 rounded-full">
-                <Clock className="w-6 h-6 text-yellow-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Completed Reviews</p>
-                <p className="text-2xl font-bold text-gray-900">{scoredRequests}</p>
-              </div>
-              <div className="bg-purple-100 p-3 rounded-full">
-                <Star className="w-6 h-6 text-purple-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+        <StatCard
+          icon={Briefcase}
+          label="Active requirements"
+          value={allJobs.length}
+          tone="blue"
+        />
+        <StatCard
+          icon={Send}
+          label="Referral requests"
+          value={totalRequests}
+          tone="emerald"
+        />
+        <StatCard
+          icon={Clock}
+          label="Pending reviews"
+          value={pendingRequests}
+          tone="amber"
+        />
+        <StatCard
+          icon={Star}
+          label="Reviews completed"
+          value={scoredRequests}
+          tone="purple"
+        />
       </div>
 
-      {/* Referral Requests Status */}
       {totalRequests > 0 && (
-        <Card>
+        <Card className="rounded-2xl border-slate-200/70 bg-white shadow-sm">
           <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <Users className="w-5 h-5" />
-              <span>Referral Requests Status</span>
+            <CardTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5 text-brand-600" />
+              Referral requests
             </CardTitle>
-            <CardDescription>Track your referral requests and their current status</CardDescription>
+            <CardDescription>
+              Track requests you've sent and their current status.
+            </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              {referralRequests
-                .filter(req => req.seeker_id === user.id)
-                .map((request) => (
-                  <div key={request.id} className="p-4 border rounded-lg hover:bg-gray-50 transition-colors">
-                    <div className="flex justify-between items-start mb-2">
-                      <div>
-                        <h3 className="font-medium text-gray-900">{request.job_role}</h3>
-                        <p className="text-sm text-gray-600">
-                          Requested on {new Date(request.created_at).toLocaleDateString()}
-                        </p>
-                      </div>
-                      <Badge 
-                        variant={request.status === 'scored' ? 'default' : 'secondary'}
-                        className={
-                          request.status === 'scored' 
-                            ? 'bg-green-100 text-green-800' 
-                            : request.status === 'pending'
-                            ? 'bg-yellow-100 text-yellow-800'
-                            : 'bg-gray-100 text-gray-800'
-                        }
-                      >
-                        {request.status === 'scored' ? 'Completed' : 
-                         request.status === 'pending' ? 'Pending Review' : 
-                         request.status}
-                      </Badge>
+            <div className="space-y-3">
+              {myReferralRequests.map((request) => (
+                <div
+                  key={request.id}
+                  className="flex flex-col gap-3 rounded-2xl border border-slate-200/70 bg-slate-50/50 p-4 transition hover:bg-white sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div>
+                    <div className="text-sm font-semibold text-slate-900">
+                      {roleLabel(request.job_role)}
                     </div>
-                    <div className="text-sm text-gray-600">
-                      <span className="font-medium">Your Experience:</span> {request.seeker_experience_years} years
+                    <div className="text-xs text-slate-500">
+                      Sent on{" "}
+                      {new Date(request.created_at ?? Date.now()).toLocaleDateString()} •{" "}
+                      {request.seeker_experience_years} years exp
                     </div>
                   </div>
-                ))}
+                  <Badge
+                    className={
+                      request.status === "scored"
+                        ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-100"
+                        : "bg-amber-100 text-amber-700 hover:bg-amber-100"
+                    }
+                  >
+                    {request.status === "scored" ? "Reviewed" : "Pending review"}
+                  </Badge>
+                </div>
+              ))}
             </div>
           </CardContent>
         </Card>
       )}
 
-      {/* Job Requirements History */}
-      <Card>
+      <Card className="rounded-2xl border-slate-200/70 bg-white shadow-sm">
         <CardHeader>
-          <CardTitle>Your Job Requirements</CardTitle>
-          <CardDescription>Track all your job applications and requirements</CardDescription>
+          <CardTitle>Your job requirements</CardTitle>
+          <CardDescription>
+            Each requirement is a snapshot of what you're looking for and your current
+            profile.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {allJobs.length === 0 ? (
-            <div className="text-center py-12">
-              <Briefcase className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">No job requirements yet</h3>
-              <p className="text-gray-500 mb-4">Get started by posting your first job requirement</p>
-              <Button onClick={() => setShowForm(true)}>
-                <Plus className="w-4 h-4 mr-2" />
-                Post Job Requirement
+            <div className="rounded-2xl border border-dashed border-slate-300 p-10 text-center">
+              <Briefcase className="mx-auto h-10 w-10 text-slate-400" />
+              <h3 className="mt-3 font-display text-lg font-semibold text-slate-900">
+                No requirements yet
+              </h3>
+              <p className="mt-1 text-sm text-slate-500">
+                Post your first requirement to start collecting karma scores.
+              </p>
+              <Button
+                onClick={() => setShowForm(true)}
+                className="mt-4 rounded-xl bg-slate-900 text-white hover:bg-slate-800"
+              >
+                <Plus className="mr-2 h-4 w-4" /> Post requirement
               </Button>
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-3">
               {allJobs.map((job) => (
-                <div key={job.id} className="p-4 border rounded-lg hover:bg-gray-50 transition-colors">
-                  <div className="flex justify-between items-start mb-2">
-                    <h3 className="font-medium text-gray-900">{JOB_ROLES.find(roleObj => roleObj.value === job.role).label}</h3>
-                    <Badge variant="outline">{job.yearsOfExperience} years exp</Badge>
+                <motion.div
+                  key={job.id}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="rounded-2xl border border-slate-200/70 bg-white p-4 transition hover:shadow-sm"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <div className="font-semibold text-slate-900">
+                        {roleLabel(job.role)}
+                      </div>
+                      <div className="text-xs text-slate-500">
+                        Posted{" "}
+                        {job.createdAt
+                          ? new Date(job.createdAt).toLocaleDateString()
+                          : "recently"}
+                      </div>
+                    </div>
+                    <Badge variant="outline" className="border-slate-200">
+                      {job.yearsOfExperience} years exp
+                    </Badge>
                   </div>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm text-gray-600 mb-3">
-                    <div>
-                      <span className="font-medium">Current CTC:</span> ₹{job.currentCtc?.toLocaleString()}
-                    </div>
-                    <div>
-                      <span className="font-medium">Expected CTC:</span> ₹{job.expectedCtc?.toLocaleString()}
-                    </div>
-                    <div>
-                      <span className="font-medium">Notice Period:</span> {job.noticePeriod} days
-                    </div>
-                    <div>
-                      <span className="font-medium">Applied:</span> {new Date(job.createdAt).toLocaleDateString()}
-                    </div>
+                  <div className="mt-4 grid grid-cols-2 gap-3 text-sm text-slate-600 md:grid-cols-3">
+                    <Stat label="Current CTC" value={fmtCurrency(job.currentCtc)} />
+                    <Stat label="Expected CTC" value={fmtCurrency(job.expectedCtc)} />
+                    <Stat
+                      label="Notice period"
+                      value={job.noticePeriod ? `${job.noticePeriod} days` : "—"}
+                    />
                   </div>
-                  <div className="flex justify-end">
-                    <Button 
+                  <div className="mt-4 flex justify-end">
+                    <Button
                       onClick={() => {
-                        console.log (job)
-                        setSelectedJob({ id: job.id, role: job.role, experience: job.yearsOfExperience });
+                        setSelectedJob({
+                          id: job.id,
+                          role: job.role,
+                          experience: job.yearsOfExperience,
+                        });
                         setShowReferrerPopup(true);
                       }}
                       size="sm"
-                      className="bg-blue-600 hover:bg-blue-700 text-white"
+                      className="rounded-lg bg-slate-900 text-white hover:bg-slate-800"
                     >
-                      <Send className="w-4 h-4 mr-2" />
-                      Request Referral
+                      <Send className="mr-2 h-4 w-4" /> Request referral
                     </Button>
                   </div>
-                </div>
+                </motion.div>
               ))}
             </div>
           )}
         </CardContent>
       </Card>
 
-      {/* Referrer Selection Popup */}
       {showReferrerPopup && selectedJob && (
         <ReferrerSelectionPopup
           isOpen={showReferrerPopup}
@@ -278,7 +308,60 @@ export const SeekerDashboard = ({ user }: SeekerDashboardProps) => {
           jobExperience={selectedJob.experience}
         />
       )}
-
     </div>
+  );
+};
+
+const Stat = ({ label, value }: { label: string; value: string }) => (
+  <div>
+    <div className="text-xs uppercase tracking-wide text-slate-400">{label}</div>
+    <div className="text-sm font-semibold text-slate-900">{value}</div>
+  </div>
+);
+
+const fmtCurrency = (n?: number | null) =>
+  typeof n === "number" && Number.isFinite(n) ? `₹${n.toLocaleString()}` : "—";
+
+const toneClasses: Record<string, { bg: string; text: string; ring: string }> = {
+  blue: { bg: "bg-blue-50", text: "text-blue-600", ring: "ring-blue-100" },
+  emerald: { bg: "bg-emerald-50", text: "text-emerald-600", ring: "ring-emerald-100" },
+  amber: { bg: "bg-amber-50", text: "text-amber-600", ring: "ring-amber-100" },
+  purple: { bg: "bg-purple-50", text: "text-purple-600", ring: "ring-purple-100" },
+};
+
+const StatCard = ({
+  icon: Icon,
+  label,
+  value,
+  tone,
+}: {
+  icon: typeof Briefcase;
+  label: string;
+  value: number;
+  tone: keyof typeof toneClasses;
+}) => {
+  const t = toneClasses[tone];
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-sm"
+    >
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="text-xs font-medium uppercase tracking-wider text-slate-500">
+            {label}
+          </div>
+          <div className="mt-1 font-display text-2xl font-bold text-slate-900">
+            {value}
+          </div>
+        </div>
+        <div
+          className={`grid h-10 w-10 place-items-center rounded-xl ${t.bg} ${t.text} ring-4 ${t.ring}`}
+        >
+          <Icon className="h-5 w-5" />
+        </div>
+      </div>
+    </motion.div>
   );
 };
