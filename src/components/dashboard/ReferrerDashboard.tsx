@@ -4,6 +4,7 @@ import { User } from "@/stores/authStore";
 import { useReferralStore } from "@/stores/referralStore";
 import { JOB_ROLES } from "@/constants/roles";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 import {
   HeroBanner, StatCard, EmptyState,
   primaryBtnStyle, secondaryBtnStyle, badgeStyle,
@@ -12,11 +13,12 @@ import {
 interface ReferrerDashboardProps {
   user: User;
   activeTab: string;
+  onTabChange: (tab: string) => void;
 }
 
 const roleLabel = (value: string) => JOB_ROLES.find((r) => r.value === value)?.label ?? value;
 
-export const ReferrerDashboard = ({ user, activeTab }: ReferrerDashboardProps) => {
+export const ReferrerDashboard = ({ user, activeTab, onTabChange }: ReferrerDashboardProps) => {
   const {
     fetchReferralRequests, fetchScoringParameters, createScore,
     referralRequests, scoringParameters, saveCalendlyUrl,
@@ -25,22 +27,29 @@ export const ReferrerDashboard = ({ user, activeTab }: ReferrerDashboardProps) =
   const [comments, setComments] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState<Set<string>>(new Set());
 
-  const [calendlyUrl, setCalendlyUrl] = useState(user.calendly_url || "");
+  const [activeCalendlyUrl, setActiveCalendlyUrl] = useState(user.calendly_url || "");
+  const [showEditCalendly, setShowEditCalendly] = useState(false);
+  const [editCalendlyUrl, setEditCalendlyUrl] = useState(user.calendly_url || "");
   const [savingCalendly, setSavingCalendly] = useState(false);
   const [savedCalendly, setSavedCalendly] = useState(false);
-  const [activeCalendlyUrl, setActiveCalendlyUrl] = useState(user.calendly_url || "");
+
+  const [seekerProfiles, setSeekerProfiles] = useState<Record<string, { name: string; avatar_url: string | null }>>({});
 
   useEffect(() => {
     if (!activeCalendlyUrl) return;
-    if (document.querySelector('script[src*="calendly"]')) return;
-    const link = document.createElement("link");
-    link.href = "https://assets.calendly.com/assets/external/widget.css";
-    link.rel = "stylesheet";
-    document.head.appendChild(link);
-    const script = document.createElement("script");
-    script.src = "https://assets.calendly.com/assets/external/widget.js";
-    script.async = true;
-    document.head.appendChild(script);
+    if (!document.querySelector('script[src*="calendly"]')) {
+      const link = document.createElement("link");
+      link.href = "https://assets.calendly.com/assets/external/widget.css";
+      link.rel = "stylesheet";
+      document.head.appendChild(link);
+      const script = document.createElement("script");
+      script.src = "https://assets.calendly.com/assets/external/widget.js";
+      script.async = true;
+      document.head.appendChild(script);
+      script.onload = () => (window as any).Calendly?.initInlineWidgets();
+    } else {
+      setTimeout(() => (window as any).Calendly?.initInlineWidgets(), 100);
+    }
   }, [activeCalendlyUrl]);
 
   useEffect(() => {
@@ -58,18 +67,36 @@ export const ReferrerDashboard = ({ user, activeTab }: ReferrerDashboardProps) =
   const readyToScore = myRequests.filter((r) => r.status === "pending" || r.status === "scheduled");
   const scored = myRequests.filter((r) => r.status === "scored");
 
-  const handleSaveCalendlyUrl = async () => {
-    if (!calendlyUrl.trim()) return;
+  const scheduledSorted = useMemo(
+    () => [...scheduled].sort((a, b) => new Date(a.created_at ?? 0).getTime() - new Date(b.created_at ?? 0).getTime()),
+    [scheduled]
+  );
+
+  useEffect(() => {
+    const ids = scheduledSorted.map((r) => r.seeker_id).filter(Boolean);
+    if (!ids.length) return;
+    supabase.from("profiles").select("id, name, avatar_url").in("id", ids)
+      .then(({ data }) => {
+        const map: Record<string, { name: string; avatar_url: string | null }> = {};
+        (data || []).forEach((p: any) => { map[p.id] = { name: p.name || "Unknown", avatar_url: p.avatar_url }; });
+        setSeekerProfiles(map);
+      });
+  }, [scheduledSorted.length]);
+
+  const handleSaveEditCalendlyUrl = async () => {
+    const trimmed = editCalendlyUrl.trim();
+    if (!trimmed) return;
     setSavingCalendly(true);
     try {
-      await saveCalendlyUrl(user.id, calendlyUrl.trim());
-      user.calendly_url = calendlyUrl.trim();
-      setActiveCalendlyUrl(calendlyUrl.trim());
+      await saveCalendlyUrl(user.id, trimmed);
+      user.calendly_url = trimmed;
+      setActiveCalendlyUrl(trimmed);
       setSavedCalendly(true);
+      setShowEditCalendly(false);
       setTimeout(() => setSavedCalendly(false), 2000);
-      toast.success("Calendly link saved!");
+      toast.success("Calendly link updated!");
     } catch (err: any) {
-      toast.error(err?.message ?? "Failed to save Calendly link — ensure the database column exists");
+      toast.error(err?.message ?? "Failed to save Calendly link");
     } finally {
       setSavingCalendly(false);
     }
@@ -135,60 +162,134 @@ export const ReferrerDashboard = ({ user, activeTab }: ReferrerDashboardProps) =
         </div>
 
         <div style={{ background: "var(--surface)", border: "1px solid var(--border-soft)", borderRadius: 14, padding: 20 }}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)", marginBottom: 4 }}>Interview Availability</div>
-          <div style={{ fontSize: 13, color: "var(--ink-3)", marginBottom: 14, lineHeight: 1.5 }}>
-            Connect your Calendly link so seekers can book interviews directly.
-            <a href="https://calendly.com" target="_blank" rel="noopener noreferrer" style={{ color: "var(--seeker)", marginLeft: 4 }}>Create a free account →</a>
+          <div style={{ fontSize: 15, fontWeight: 700, color: "var(--ink)", marginBottom: 16, letterSpacing: "-0.02em" }}>
+            Upcoming Interviews
           </div>
-          <div style={{ display: "flex", gap: 10 }}>
-            <input
-              type="url"
-              placeholder="https://calendly.com/your-name/30min"
-              value={calendlyUrl}
-              onChange={e => setCalendlyUrl(e.target.value)}
-              style={{
-                flex: 1, height: 40, padding: "0 12px", borderRadius: 10,
-                border: "1px solid var(--border-med)", fontSize: 14,
-                color: "var(--ink)", background: "var(--surface)", fontFamily: "inherit", outline: "none",
-              }}
-            />
-            <button
-              onClick={handleSaveCalendlyUrl}
-              disabled={savingCalendly}
-              style={{ ...primaryBtnStyle, padding: "0 16px", height: 40, borderRadius: 10, gap: 6, flexShrink: 0 }}
-            >
-              {savingCalendly ? "Saving…" : savedCalendly ? "Saved ✓" : "Save"}
-            </button>
-          </div>
-          {activeCalendlyUrl && (
-            <div style={{ marginTop: 16, borderRadius: 12, overflow: "hidden", border: "1px solid var(--border-soft)" }}>
-              <div
-                className="calendly-inline-widget"
-                data-url={`${activeCalendlyUrl}?hide_gdpr_banner=1&hide_event_type_details=0`}
-                style={{ minWidth: 300, height: 660 }}
-              />
+          {scheduledSorted.length === 0 ? (
+            <div style={{ fontSize: 13, color: "var(--ink-3)", lineHeight: 1.6 }}>
+              No upcoming interviews yet. Seekers will appear here once they book via your Calendly link.
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {scheduledSorted.map((r) => {
+                const profile = seekerProfiles[r.seeker_id];
+                return (
+                  <div
+                    key={r.id}
+                    style={{
+                      padding: "16px 18px",
+                      borderRadius: 12,
+                      border: "1px solid var(--border-soft)",
+                      background: "var(--surface-2)",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                      <div>
+                        <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)", marginBottom: 4 }}>
+                          {profile?.name ?? "Loading…"}
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                          <span style={{ fontSize: 13, color: "var(--ink-2)" }}>{roleLabel(r.job_role)}</span>
+                          <span style={badgeStyle}>{r.seeker_experience_years} yrs exp</span>
+                        </div>
+                        <div style={{ fontSize: 12, color: "var(--ink-4)", marginTop: 6 }}>
+                          Booked on {new Date(r.created_at ?? Date.now()).toLocaleDateString()}
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                        <button
+                          onClick={() => (r as any).resume_url && window.open((r as any).resume_url, "_blank")}
+                          disabled={!(r as any).resume_url}
+                          style={{ ...secondaryBtnStyle, opacity: (r as any).resume_url ? 1 : 0.45 }}
+                        >
+                          <FileText size={13} /> View Resume
+                        </button>
+                        <button
+                          onClick={() => onTabChange("reviews")}
+                          style={{ ...primaryBtnStyle, padding: "0 14px", height: 34, borderRadius: 8, gap: 6 }}
+                        >
+                          <Star size={13} /> Score Candidate
+                        </button>
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 10, fontStyle: "italic" }}>
+                      Meeting details sent to your email by Calendly
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
 
-        {(pending.length > 0 || scheduled.length > 0) && (
-          <div className="surface-card" style={{ padding: 20 }}>
-            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)", marginBottom: 14 }}>Pending review queue</div>
-            {[...pending, ...scheduled].map((r, i) => (
-              <div key={r.id} style={{
-                display: "flex", alignItems: "center", justifyContent: "space-between",
-                padding: "12px 0",
-                borderBottom: i < pending.length + scheduled.length - 1 ? "1px solid var(--border-soft)" : "none",
-              }}>
-                <div>
-                  <div style={{ fontSize: 14, fontWeight: 500, color: "var(--ink)" }}>{roleLabel(r.job_role)}</div>
-                  <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 2 }}>{r.seeker_experience_years} years exp</div>
-                </div>
-                <PendingBadge />
-              </div>
-            ))}
+        <div style={{ background: "var(--surface)", border: "1px solid var(--border-soft)", borderRadius: 14, padding: 20 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: "var(--ink)", marginBottom: 16, letterSpacing: "-0.02em" }}>
+            My Interview Calendar
           </div>
-        )}
+          {activeCalendlyUrl ? (
+            <>
+              <div style={{ borderRadius: 12, overflow: "hidden", border: "1px solid var(--border-soft)" }}>
+                <div
+                  className="calendly-inline-widget"
+                  data-url={`${activeCalendlyUrl}?hide_gdpr_banner=1&hide_event_type_details=0`}
+                  style={{ minWidth: 300, height: 660 }}
+                />
+              </div>
+              <div style={{ marginTop: 12 }}>
+                {!showEditCalendly ? (
+                  <button
+                    onClick={() => { setEditCalendlyUrl(activeCalendlyUrl); setShowEditCalendly(true); }}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      cursor: "pointer",
+                      fontSize: 13,
+                      color: "var(--ink-3)",
+                      padding: 0,
+                      fontFamily: "inherit",
+                      textDecoration: "underline",
+                      textDecorationStyle: "dotted",
+                      textUnderlineOffset: 3,
+                    }}
+                  >
+                    Update Calendly link →
+                  </button>
+                ) : (
+                  <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
+                    <input
+                      type="url"
+                      placeholder="https://calendly.com/your-name/event-name"
+                      value={editCalendlyUrl}
+                      onChange={(e) => setEditCalendlyUrl(e.target.value)}
+                      style={{
+                        flex: 1, height: 40, padding: "0 12px", borderRadius: 10,
+                        border: "1px solid var(--border-med)", fontSize: 14,
+                        color: "var(--ink)", background: "var(--surface)", fontFamily: "inherit", outline: "none",
+                      }}
+                    />
+                    <button
+                      onClick={handleSaveEditCalendlyUrl}
+                      disabled={savingCalendly}
+                      style={{ ...primaryBtnStyle, padding: "0 16px", height: 40, borderRadius: 10, gap: 6, flexShrink: 0 }}
+                    >
+                      {savingCalendly ? "Saving…" : savedCalendly ? "✓ Saved!" : "Save"}
+                    </button>
+                    <button
+                      onClick={() => setShowEditCalendly(false)}
+                      style={{ ...secondaryBtnStyle, height: 40, borderRadius: 10, flexShrink: 0 }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )}
+              </div>
+            </>
+          ) : (
+            <div style={{ fontSize: 13, color: "var(--ink-3)", lineHeight: 1.6 }}>
+              No Calendly link connected yet. Complete the setup to show your calendar here.
+            </div>
+          )}
+        </div>
       </div>
     );
   }
