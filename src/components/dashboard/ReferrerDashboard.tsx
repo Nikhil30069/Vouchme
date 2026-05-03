@@ -28,6 +28,20 @@ export const ReferrerDashboard = ({ user, activeTab }: ReferrerDashboardProps) =
   const [calendlyUrl, setCalendlyUrl] = useState(user.calendly_url || "");
   const [savingCalendly, setSavingCalendly] = useState(false);
   const [savedCalendly, setSavedCalendly] = useState(false);
+  const [activeCalendlyUrl, setActiveCalendlyUrl] = useState(user.calendly_url || "");
+
+  useEffect(() => {
+    if (!activeCalendlyUrl) return;
+    if (document.querySelector('script[src*="calendly"]')) return;
+    const link = document.createElement("link");
+    link.href = "https://assets.calendly.com/assets/external/widget.css";
+    link.rel = "stylesheet";
+    document.head.appendChild(link);
+    const script = document.createElement("script");
+    script.src = "https://assets.calendly.com/assets/external/widget.js";
+    script.async = true;
+    document.head.appendChild(script);
+  }, [activeCalendlyUrl]);
 
   useEffect(() => {
     fetchReferralRequests(user.id);
@@ -50,6 +64,7 @@ export const ReferrerDashboard = ({ user, activeTab }: ReferrerDashboardProps) =
     try {
       await saveCalendlyUrl(user.id, calendlyUrl.trim());
       user.calendly_url = calendlyUrl.trim();
+      setActiveCalendlyUrl(calendlyUrl.trim());
       setSavedCalendly(true);
       setTimeout(() => setSavedCalendly(false), 2000);
       toast.success("Calendly link saved!");
@@ -145,9 +160,13 @@ export const ReferrerDashboard = ({ user, activeTab }: ReferrerDashboardProps) =
               {savingCalendly ? "Saving…" : savedCalendly ? "Saved ✓" : "Save"}
             </button>
           </div>
-          {user.calendly_url && (
-            <div style={{ marginTop: 10, fontSize: 12, color: "var(--ink-3)" }}>
-              Current: <a href={user.calendly_url} target="_blank" rel="noopener noreferrer" style={{ color: "var(--seeker)" }}>{user.calendly_url}</a>
+          {activeCalendlyUrl && (
+            <div style={{ marginTop: 16, borderRadius: 12, overflow: "hidden", border: "1px solid var(--border-soft)" }}>
+              <div
+                className="calendly-inline-widget"
+                data-url={`${activeCalendlyUrl}?hide_gdpr_banner=1&hide_event_type_details=0`}
+                style={{ minWidth: 300, height: 660 }}
+              />
             </div>
           )}
         </div>
