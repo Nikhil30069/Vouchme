@@ -230,6 +230,8 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Find referrers eligible for a given seeker job_requirement.
+-- Referrer experience is stored in profiles.workExperience JSONB and total_experience_years,
+-- NOT in job_requirements (that table is seeker-only).
 CREATE OR REPLACE FUNCTION public.find_eligible_referrers_for_job(job_requirement_uuid UUID)
 RETURNS TABLE (
   referrer_id UUID,
@@ -246,20 +248,20 @@ BEGIN
   SELECT
     p.id,
     p.name,
-    jr.role,
-    jr."yearsOfExperience",
-    (p."workExperience"->>'organization')::TEXT,
+    (p."workExperience"->>'role')::TEXT,
+    p.total_experience_years,
+    COALESCE(p.current_organization, (p."workExperience"->>'organization'))::TEXT,
     p.total_experience_years,
     p.organizations,
     p.current_organization
   FROM public.profiles p
-  INNER JOIN public.job_requirements jr
-    ON jr."userId" = p.id AND jr.type = 'referrer'
-  INNER JOIN public.job_requirements seeker_jr
-    ON seeker_jr.id = job_requirement_uuid
-  WHERE 'referrer' = ANY (p.roles)
-    AND lower(trim(jr.role)) = lower(trim(seeker_jr.role))
-    AND jr."yearsOfExperience" > seeker_jr."yearsOfExperience" + 1
+  CROSS JOIN public.job_requirements seeker_jr
+  WHERE seeker_jr.id = job_requirement_uuid
+    AND 'referrer' = ANY (p.roles)
+    AND p.calendly_url IS NOT NULL
+    AND (p."workExperience"->>'role') IS NOT NULL
+    AND lower(trim(p."workExperience"->>'role')) = lower(trim(seeker_jr.role))
+    AND p.total_experience_years > seeker_jr."yearsOfExperience"
     AND NOT EXISTS (
       SELECT 1 FROM public.referral_requests rr
       WHERE rr.seeker_id = seeker_jr."userId"
@@ -283,15 +285,15 @@ BEGIN
   SELECT
     p.id,
     p.name,
-    jr.role,
-    jr."yearsOfExperience",
-    (p."workExperience"->>'organization')::TEXT
+    (p."workExperience"->>'role')::TEXT,
+    p.total_experience_years,
+    COALESCE(p.current_organization, (p."workExperience"->>'organization'))::TEXT
   FROM public.profiles p
-  INNER JOIN public.job_requirements jr
-    ON jr."userId" = p.id AND jr.type = 'referrer'
   WHERE 'referrer' = ANY (p.roles)
-    AND lower(trim(jr.role)) = lower(trim(seeker_role))
-    AND jr."yearsOfExperience" > seeker_experience + 1;
+    AND p.calendly_url IS NOT NULL
+    AND (p."workExperience"->>'role') IS NOT NULL
+    AND lower(trim(p."workExperience"->>'role')) = lower(trim(seeker_role))
+    AND p.total_experience_years > seeker_experience;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
