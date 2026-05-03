@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { User } from "@/stores/authStore";
 import { useReferralStore } from "@/stores/referralStore";
@@ -46,7 +47,7 @@ export const CalendlySetupModal = ({ user, onComplete }: CalendlySetupModalProps
     }
   };
 
-  return (
+  return createPortal(
     <div
       style={{
         position: "fixed",
@@ -208,6 +209,7 @@ export const CalendlySetupModal = ({ user, onComplete }: CalendlySetupModalProps
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
