@@ -694,11 +694,7 @@ export const useReferralStore = create<ReferralState>((set, get) => ({
   },
 
   saveCalendlyUrl: async (userId, url) => {
-    const timeout = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('Request timed out — check Supabase connection')), 10000)
-    );
-    const update = supabase.from('profiles').update({ calendly_url: url }).eq('id', userId);
-    const { error } = await Promise.race([update, timeout]) as Awaited<typeof update>;
+    const { error } = await supabase.from('profiles').update({ calendly_url: url }).eq('id', userId);
     if (error) throw error;
   },
 

@@ -14,11 +14,10 @@ interface CalendlySetupModalProps {
 export const CalendlySetupModal = ({ user, onComplete }: CalendlySetupModalProps) => {
   const { saveCalendlyUrl } = useReferralStore();
   const [url, setUrl] = useState("");
-  const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [showSteps, setShowSteps] = useState(false);
 
-  const handleSave = async () => {
+  const handleSave = () => {
     const trimmed = url.trim();
     if (!trimmed) {
       toast.error("Please enter your Calendly URL before saving.");
@@ -28,23 +27,15 @@ export const CalendlySetupModal = ({ user, onComplete }: CalendlySetupModalProps
       toast.error("URL must start with https://calendly.com/");
       return;
     }
-    setSaving(true);
-    try {
-      await Promise.race([
-        saveCalendlyUrl(user.id, trimmed),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("Request timed out after 10 seconds. Check your connection and try again.")), 10000)
-        ),
-      ]);
-      setSaved(true);
-      setTimeout(() => {
-        onComplete(trimmed);
-      }, 800);
-    } catch (err: any) {
-      toast.error(err?.message ?? "Failed to save Calendly link. Please try again.");
-    } finally {
-      setSaving(false);
-    }
+    // Optimistically complete — fire the DB write in the background.
+    // The free-tier Supabase project may take 20-30s to wake from pause on
+    // the first write; we don't want to block the user on that.
+    setSaved(true);
+    saveCalendlyUrl(user.id, trimmed).catch(() => {
+      // Silent — if this fails the modal will reappear on next login
+      // once the project is fully awake.
+    });
+    setTimeout(() => onComplete(trimmed), 600);
   };
 
   return createPortal(
@@ -178,7 +169,7 @@ export const CalendlySetupModal = ({ user, onComplete }: CalendlySetupModalProps
             placeholder="https://calendly.com/your-name/event-name"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && !saving && handleSave()}
+            onKeyDown={(e) => e.key === "Enter" && !saved && handleSave()}
             style={{
               flex: 1,
               height: 42,
@@ -194,18 +185,18 @@ export const CalendlySetupModal = ({ user, onComplete }: CalendlySetupModalProps
           />
           <button
             onClick={handleSave}
-            disabled={saving || saved}
+            disabled={saved}
             style={{
               ...primaryBtnStyle,
               padding: "0 20px",
               height: 42,
               borderRadius: 10,
               flexShrink: 0,
-              opacity: saving || saved ? 0.8 : 1,
+              opacity: saved ? 0.8 : 1,
               minWidth: 90,
             }}
           >
-            {saved ? "✓ Saved!" : saving ? "Saving…" : "Save"}
+            {saved ? "✓ Saved!" : "Save"}
           </button>
         </div>
       </div>
