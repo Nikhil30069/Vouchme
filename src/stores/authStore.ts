@@ -36,7 +36,7 @@ interface AuthState {
   signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
   updateUser: (data: Partial<User>) => void;
-  addRoleToUser: (role: AppRole) => Promise<void>;
+  addRoleToUser: (role: AppRole, additionalData?: Record<string, unknown>) => Promise<void>;
 }
 
 const computeStatus = (user: User | null, activeRole: AppRole | null): AuthStatus => {
@@ -158,17 +158,23 @@ export const useAuthStore = create<AuthState>()(
         set({ user: null, activeRole: null, status: "unauthenticated" });
       },
 
-      addRoleToUser: async (role) => {
+      addRoleToUser: async (role, additionalData) => {
         const user = get().user;
         if (!user) return;
         const nextRoles = Array.from(new Set([...user.roles, role])) as AppRole[];
+        const update: Record<string, unknown> = {
+          roles: nextRoles,
+          onboarded: true,
+          updated_at: new Date().toISOString(),
+          ...additionalData,
+        };
         const { error } = await supabase
           .from("profiles")
-          .update({ roles: nextRoles, onboarded: true, updated_at: new Date().toISOString() })
+          .update(update)
           .eq("id", user.id);
         if (error) throw error;
         await get().refreshProfile();
-        set({ activeRole: role });
+        get().setActiveRole(role);
       },
     }),
     {

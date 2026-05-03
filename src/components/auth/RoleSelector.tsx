@@ -1,6 +1,9 @@
-import { ArrowRight, LogOut } from "lucide-react";
+import { useState } from "react";
+import { ArrowRight, ArrowLeft, Check, LogOut } from "lucide-react";
 import { useAuthStore, type AppRole } from "@/stores/authStore";
 import { ROLE_CONFIG, ROLE_ORDER } from "@/constants/appRoles";
+import { JOB_ROLES } from "@/constants/roles";
+import { toast } from "sonner";
 
 const LogoMark = () => (
   <div style={{
@@ -37,8 +40,23 @@ const roleIcons: Record<AppRole, React.ReactNode> = {
   ),
 };
 
+const inputStyle: React.CSSProperties = {
+  width: "100%", fontFamily: "inherit", fontSize: 14, color: "var(--ink)",
+  background: "var(--surface)", border: "1px solid var(--border-med)",
+  borderRadius: 10, padding: "0 13px", height: 40,
+  outline: "none", transition: "border-color 0.15s, box-shadow 0.15s",
+  WebkitAppearance: "none",
+  boxSizing: "border-box",
+};
+
 export const RoleSelector = () => {
-  const { user, setActiveRole, signOut } = useAuthStore();
+  const { user, setActiveRole, signOut, addRoleToUser } = useAuthStore();
+  const [addingReferrer, setAddingReferrer] = useState(false);
+  const [refRole, setRefRole] = useState<string>(JOB_ROLES[0].value);
+  const [refYears, setRefYears] = useState<number>(2);
+  const [refOrg, setRefOrg] = useState<string>("");
+  const [submitting, setSubmitting] = useState(false);
+
   if (!user) return null;
 
   const availableRoles = user.roles ?? [];
@@ -48,6 +66,133 @@ export const RoleSelector = () => {
     .slice(0, 2).join("");
 
   const handleSelect = (role: AppRole) => setActiveRole(role);
+
+  const handleAddRole = (role: AppRole) => {
+    if (role === "referrer") {
+      setAddingReferrer(true);
+    } else {
+      void addRoleToUser(role);
+    }
+  };
+
+  const handleReferrerSubmit = async () => {
+    if (!refOrg.trim()) {
+      toast.error("Please enter your current organization.");
+      return;
+    }
+    if (refYears < 2) {
+      toast.error("You need at least 2 years of experience to become a referrer.");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await addRoleToUser("referrer", {
+        workExperience: { role: refRole, years: refYears, organization: refOrg.trim() },
+        current_organization: refOrg.trim(),
+        total_experience_years: refYears,
+      });
+    } catch (err: any) {
+      toast.error(err?.message ?? "Failed to add referrer role. Please try again.");
+      setSubmitting(false);
+    }
+  };
+
+  if (addingReferrer) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "40px 24px", background: "var(--surface-2)" }}>
+        <div className="anim-scalein" style={{ width: "100%", maxWidth: 520 }}>
+          <div style={{ display: "flex", justifyContent: "center", marginBottom: 20 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 17, fontWeight: 700, letterSpacing: "-0.04em", color: "var(--ink)" }}>
+              <LogoMark />
+              vouchme
+            </div>
+          </div>
+
+          <button
+            onClick={() => setAddingReferrer(false)}
+            style={{
+              display: "flex", alignItems: "center", gap: 6,
+              background: "none", border: "none", cursor: "pointer",
+              fontSize: 13, color: "var(--ink-3)", marginBottom: 24,
+              fontFamily: "inherit",
+            }}
+          >
+            <ArrowLeft size={14} /> Back
+          </button>
+
+          <h2 style={{ fontSize: 26, fontWeight: 700, letterSpacing: "-0.04em", marginBottom: 6, color: "var(--ink)" }}>
+            Referrer credentials
+          </h2>
+          <p style={{ fontSize: 14, color: "var(--ink-3)", marginBottom: 28 }}>
+            Referrers need ≥2 years of experience to keep karma scores trustworthy.
+          </p>
+
+          <div style={{
+            padding: "16px 20px", borderRadius: 12,
+            background: "var(--referrer-light)",
+            border: "1px solid var(--referrer-mid)",
+            marginBottom: 28,
+          }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--referrer)", marginBottom: 3 }}>Why we ask this</div>
+            <div style={{ fontSize: 13, color: "var(--ink-3)" }}>Your work history is shown to seekers so they know who's vouching for them.</div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+            <div>
+              <label style={{ fontSize: 13, fontWeight: 500, color: "var(--ink-2)", marginBottom: 6, display: "block" }}>Primary role</label>
+              <select
+                value={refRole}
+                onChange={(e) => setRefRole(e.target.value)}
+                style={{ ...inputStyle, cursor: "pointer" }}
+              >
+                {JOB_ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={{ fontSize: 13, fontWeight: 500, color: "var(--ink-2)", marginBottom: 6, display: "block" }}>Years of experience</label>
+              <input
+                type="number" min="2" max="50"
+                value={refYears}
+                onChange={(e) => setRefYears(parseInt(e.target.value) || 0)}
+                style={inputStyle}
+              />
+              <div style={{ fontSize: 12, color: "var(--ink-4)", marginTop: 5 }}>Minimum 2 years</div>
+            </div>
+          </div>
+
+          <div style={{ marginBottom: 32 }}>
+            <label style={{ fontSize: 13, fontWeight: 500, color: "var(--ink-2)", marginBottom: 6, display: "block" }}>Current organization</label>
+            <input
+              type="text"
+              value={refOrg}
+              onChange={(e) => setRefOrg(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && !submitting && handleReferrerSubmit()}
+              placeholder="e.g. Stripe, Razorpay…"
+              style={inputStyle}
+            />
+          </div>
+
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <button
+              onClick={handleReferrerSubmit}
+              disabled={submitting}
+              style={{
+                display: "inline-flex", alignItems: "center", gap: 8,
+                background: "var(--ink)", color: "white", border: "none",
+                cursor: submitting ? "not-allowed" : "pointer",
+                fontSize: 14, fontWeight: 500,
+                padding: "0 20px", height: 40, borderRadius: 10,
+                opacity: submitting ? 0.7 : 1,
+                fontFamily: "inherit",
+              }}
+            >
+              {submitting ? "Saving…" : "Add referrer workspace"} {!submitting && <Check size={15} />}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "40px 24px", background: "var(--surface-2)" }}>
@@ -138,7 +283,7 @@ export const RoleSelector = () => {
               return (
                 <button
                   key={role}
-                  onClick={() => useAuthStore.getState().addRoleToUser(role)}
+                  onClick={() => handleAddRole(role)}
                   style={{
                     display: "flex", alignItems: "center", justifyContent: "space-between",
                     padding: "12px 16px", width: "100%",
