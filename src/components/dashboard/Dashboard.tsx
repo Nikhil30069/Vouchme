@@ -1,42 +1,66 @@
-import { AnimatePresence, motion } from "framer-motion";
-import { useAuthStore } from "@/stores/authStore";
-import { DashboardLayout } from "./DashboardLayout";
+import { useEffect, useState } from "react";
+import { Briefcase, Send, Star, Target, ClipboardList, Settings } from "lucide-react";
+import { useAuthStore, type AppRole } from "@/stores/authStore";
+import { DashboardLayout, type SideItem } from "./DashboardLayout";
 import { SeekerDashboard } from "./SeekerDashboard";
 import { RecruiterDashboard } from "./RecruiterDashboard";
 import { ReferrerDashboard } from "./ReferrerDashboard";
+import { AdminTestManager } from "@/components/admin/AdminTestManager";
+
+const roleTabItems: Record<AppRole, SideItem[]> = {
+  seeker: [
+    { id: "overview", label: "Overview", icon: Target },
+    { id: "jobs", label: "My Requirements", icon: Briefcase },
+    { id: "requests", label: "Referral Requests", icon: Send },
+    { id: "tests", label: "Certification Tests", icon: ClipboardList },
+  ],
+  recruiter: [
+    { id: "overview", label: "Overview", icon: Target },
+    { id: "postings", label: "Job Postings", icon: Briefcase },
+  ],
+  referrer: [
+    { id: "overview", label: "Overview", icon: Target },
+    { id: "reviews", label: "Review Queue", icon: Star },
+  ],
+};
+
+const adminItem: SideItem = { id: "admin-tests", label: "Test Manager", icon: Settings };
 
 export const Dashboard = () => {
   const user = useAuthStore((s) => s.user);
   const activeRole = useAuthStore((s) => s.activeRole);
+  const [activeTab, setActiveTab] = useState("overview");
+
+  useEffect(() => {
+    setActiveTab("overview");
+  }, [activeRole]);
 
   if (!user || !activeRole) return null;
 
+  const baseSideItems = roleTabItems[activeRole] ?? [];
+  const sideItems = user.is_admin ? [...baseSideItems, adminItem] : baseSideItems;
+
   const renderDashboard = () => {
+    if (activeTab === "admin-tests") return <AdminTestManager />;
     switch (activeRole) {
       case "seeker":
-        return <SeekerDashboard user={user} />;
+        return <SeekerDashboard user={user} activeTab={activeTab} onTabChange={setActiveTab} />;
       case "recruiter":
-        return <RecruiterDashboard user={user} />;
+        return <RecruiterDashboard user={user} activeTab={activeTab} />;
       case "referrer":
-        return <ReferrerDashboard user={user} />;
+        return <ReferrerDashboard user={user} activeTab={activeTab} />;
       default:
         return null;
     }
   };
 
   return (
-    <DashboardLayout>
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={activeRole}
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -8 }}
-          transition={{ duration: 0.35, ease: "easeOut" }}
-        >
-          {renderDashboard()}
-        </motion.div>
-      </AnimatePresence>
+    <DashboardLayout
+      sideItems={sideItems}
+      activeTab={activeTab}
+      onTabChange={setActiveTab}
+    >
+      {renderDashboard()}
     </DashboardLayout>
   );
 };

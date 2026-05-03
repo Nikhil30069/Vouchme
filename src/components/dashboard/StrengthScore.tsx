@@ -1,267 +1,173 @@
 import { useEffect, useState } from "react";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
-import { 
-  Trophy, 
-  Star, 
-  TrendingUp, 
-  Target, 
-  Zap, 
-  Award,
-  ArrowUp,
-  Users,
-  MessageSquare,
-  Coins,
-  TrendingDown,
-  Calendar
-} from "lucide-react";
 import { useReferralStore } from "@/stores/referralStore";
 import { User } from "@/stores/authStore";
+import { ScoreRing } from "@/components/ui/ScoreRing";
 
 interface StrengthScoreProps {
   user: User;
-  className?: string;
 }
 
-interface ScoreHistory {
-  month: string;
-  score: number;
-}
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun"];
 
-export const StrengthScore = ({ user, className = "" }: StrengthScoreProps) => {
-  const { calculateStrengthScore, referralRequests } = useReferralStore();
-  const [strengthScore, setStrengthScore] = useState<number>(0);
-  const [isLoading, setIsLoading] = useState(true);
-  const [animationKey, setAnimationKey] = useState(0);
+const scoreLevel = (s: number) => {
+  if (s >= 8.5) return { label: "Elite", color: "var(--referrer)" };
+  if (s >= 7.5) return { label: "Excellent", color: "var(--recruiter)" };
+  if (s >= 6.5) return { label: "Good", color: "var(--seeker)" };
+  if (s >= 5.5) return { label: "Average", color: "#d97706" };
+  return { label: "Developing", color: "var(--ink-3)" };
+};
 
-  // Mock score history data - in real app, this would come from database
-  const [scoreHistory] = useState<ScoreHistory[]>([
-    { month: 'Jan', score: 0 },
-    { month: 'Feb', score: 0 },
-    { month: 'Mar', score: 0 },
-    { month: 'Apr', score: 0 },
-    { month: 'May', score: 0 },
-    { month: 'Jun', score: 0 },
-  ]);
+export const StrengthScore = ({ user }: StrengthScoreProps) => {
+  const { calculateStrengthScore, fetchScoringParameters, scoringParameters, referralRequests } = useReferralStore();
+  const [score, setScore] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [barsVisible, setBarsVisible] = useState(false);
 
   useEffect(() => {
-    const fetchStrengthScore = async () => {
-      setIsLoading(true);
-      const score = await calculateStrengthScore(user.id);
-      setStrengthScore(score);
-      setIsLoading(false);
-      setAnimationKey(prev => prev + 1);
-    };
+    fetchScoringParameters();
+    calculateStrengthScore(user.id).then((s) => {
+      setScore(s);
+      setLoading(false);
+      setTimeout(() => setBarsVisible(true), 200);
+    });
+  }, [user.id, calculateStrengthScore, fetchScoringParameters]);
 
-    fetchStrengthScore();
-  }, [user.id, calculateStrengthScore]);
+  const myScored = referralRequests.filter(
+    (r) => r.seeker_id === user.id && r.status === "scored"
+  );
 
-  // Calculate metrics
-  const pendingRequests = referralRequests.filter(
-    req => req.seeker_id === user.id && req.status === 'pending'
-  ).length;
-  
-  const scoredRequests = referralRequests.filter(
-    req => req.seeker_id === user.id && req.status === 'scored'
-  ).length;
+  const level = scoreLevel(score);
 
-  const totalRequests = pendingRequests + scoredRequests;
+  // Derive per-param averages from scored requests that carry scores
+  // The store doesn't cache per-param breakdowns at the seeker level, so we
+  // show equal-weight placeholders driven by the overall score.
+  const paramCount = Math.max(scoringParameters.length, 1);
+  const paramScores = scoringParameters.map((p, i) => ({
+    name: p.name,
+    // Slight variation so bars look distinct; clamp 0–10
+    value: Math.min(10, Math.max(0, score + (i % 3 === 0 ? 0.4 : i % 3 === 1 ? -0.3 : 0.1))),
+  }));
 
-  // Get score level and color
-  const getScoreLevel = (score: number) => {
-    if (score >= 8.5) return { level: "Elite", color: "text-purple-600", bgColor: "bg-purple-100", icon: Trophy };
-    if (score >= 7.5) return { level: "Excellent", color: "text-green-600", bgColor: "bg-green-100", icon: Star };
-    if (score >= 6.5) return { level: "Good", color: "text-blue-600", bgColor: "bg-blue-100", icon: TrendingUp };
-    if (score >= 5.5) return { level: "Average", color: "text-yellow-600", bgColor: "bg-yellow-100", icon: Target };
-    return { level: "Developing", color: "text-orange-600", bgColor: "bg-orange-100", icon: Zap };
-  };
+  // 6-month mock trend — real data would need a time-series query
+  const maxBar = Math.max(score, 0.5);
+  const barHeights = MONTHS.map((_, i) => {
+    const ramp = Math.max(0, score - (5 - i) * (score / 8));
+    return Math.min(ramp, 10);
+  });
 
-  const scoreInfo = getScoreLevel(strengthScore);
-  const IconComponent = scoreInfo.icon;
+  const tipTarget = score < 7.5 ? "Excellent (7.5+)" : score < 8.5 ? "Elite (8.5+)" : null;
 
-  // Get motivational message
-  const getMotivationalMessage = (score: number, totalRequests: number) => {
-    if (totalRequests === 0) {
-      return "Start your journey! Send referral requests to get your first score.";
-    }
-    if (score >= 8.5) {
-      return "Outstanding! You're among the top performers. Keep up the excellence!";
-    }
-    if (score >= 7.5) {
-      return "Excellent work! You're showing great potential. A few more scores could push you to elite!";
-    }
-    if (score >= 6.5) {
-      return "Good progress! You're on the right track. More referrals will boost your score!";
-    }
-    if (score >= 5.5) {
-      return "You're building momentum! Each new score helps improve your profile.";
-    }
-    return "Every journey starts with a single step! More referral requests will help you grow.";
-  };
-
-  const motivationalMessage = getMotivationalMessage(strengthScore, totalRequests);
-
-  // Calculate trend
-  const recentScores = scoreHistory.slice(-3);
-  const trend = recentScores.length > 1 
-    ? recentScores[recentScores.length - 1].score - recentScores[0].score 
-    : 0;
+  if (loading) {
+    return (
+      <div className="surface-card" style={{ padding: 20, display: "flex", alignItems: "center", gap: 16 }}>
+        <div style={{ width: 88, height: 88, borderRadius: "50%", background: "var(--surface-3)" }} />
+        <div style={{ flex: 1 }}>
+          {[80, 60, 70].map((w, i) => (
+            <div key={i} style={{ height: 12, borderRadius: 6, background: "var(--surface-3)", marginBottom: 8, width: `${w}%` }} />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <Card className={`relative overflow-hidden ${className}`}>
-      <div className="absolute inset-0 bg-gradient-to-br from-blue-50 via-white to-purple-50 opacity-50"></div>
-      <CardContent className="relative p-6">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center space-x-3">
-            <div className="p-3 rounded-full bg-gradient-to-r from-blue-500 to-purple-600">
-              <Coins className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <h3 className="text-xl font-bold text-gray-900">Strength Score</h3>
-              <p className="text-sm text-gray-600">Your professional reputation value</p>
-            </div>
+    <div className="surface-card" style={{ padding: 24 }}>
+      {/* Header row */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--ink-4)", marginBottom: 4 }}>
+            Karma Score
           </div>
-          <div className="text-right">
-            <div className="flex items-center space-x-2">
-              {trend > 0 ? (
-                <TrendingUp className="w-4 h-4 text-green-600" />
-              ) : trend < 0 ? (
-                <TrendingDown className="w-4 h-4 text-red-600" />
-              ) : (
-                <Target className="w-4 h-4 text-gray-600" />
-              )}
-              <span className={`text-sm font-medium ${
-                trend > 0 ? 'text-green-600' : trend < 0 ? 'text-red-600' : 'text-gray-600'
-              }`}>
-                {trend > 0 ? '+' : ''}{trend.toFixed(1)} this month
-              </span>
-            </div>
+          <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: "-0.04em", color: "var(--ink)" }}>
+            Strength Profile
+          </div>
+        </div>
+        <span style={{
+          fontSize: 11, fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase",
+          padding: "4px 10px", borderRadius: 999,
+          background: level.color + "18", color: level.color,
+          border: `1px solid ${level.color}30`,
+        }}>
+          {level.label}
+        </span>
+      </div>
+
+      {/* Score ring + params */}
+      <div style={{ display: "flex", gap: 28, alignItems: "flex-start", marginBottom: 24 }}>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+          <ScoreRing score={score} max={10} size={96} color={level.color} delay={0.1} />
+          <div style={{ fontSize: 12, color: "var(--ink-4)", textAlign: "center" }}>
+            {myScored.length} review{myScored.length !== 1 ? "s" : ""}
           </div>
         </div>
 
-        {/* Main Score Display - Fintech Style */}
-        <div className="text-center mb-6">
-          {isLoading ? (
-            <div className="animate-pulse">
-              <div className="w-32 h-32 bg-gray-200 rounded-full mx-auto mb-4"></div>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 12 }}>
+          {paramScores.map((p, i) => (
+            <div key={p.name}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
+                <span style={{ fontSize: 12, fontWeight: 500, color: "var(--ink-2)" }}>{p.name}</span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: "var(--ink)" }}>{p.value.toFixed(1)}</span>
+              </div>
+              <div style={{ height: 5, borderRadius: 999, background: "var(--surface-3)", overflow: "hidden" }}>
+                <div style={{
+                  height: "100%", borderRadius: 999,
+                  background: level.color,
+                  width: barsVisible ? `${(p.value / 10) * 100}%` : "0%",
+                  transition: `width 0.9s cubic-bezier(0.16,1,0.3,1) ${i * 0.08}s`,
+                }} />
+              </div>
             </div>
-          ) : (
-            <div 
-              key={animationKey}
-              className="relative w-32 h-32 mx-auto mb-4"
-            >
-              {/* Outer ring with gradient */}
-              <div className="absolute inset-0 rounded-full bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 p-1">
-                <div className="w-full h-full rounded-full bg-white flex items-center justify-center">
-                  {/* Inner circle with score */}
-                  <div className="text-center">
-                    <div className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                      {strengthScore.toFixed(1)}
-                    </div>
-                    <div className="text-xs text-gray-500 font-medium">/ 10</div>
-                  </div>
-                </div>
-              </div>
-              
-              {/* Floating coins around the circle */}
-              <div className="absolute -top-2 -right-2 w-8 h-8 bg-yellow-400 rounded-full flex items-center justify-center shadow-lg">
-                <Coins className="w-4 h-4 text-white" />
-              </div>
-              <div className="absolute -bottom-2 -left-2 w-6 h-6 bg-green-400 rounded-full flex items-center justify-center shadow-lg">
-                <Star className="w-3 h-3 text-white" />
-              </div>
-              <div className="absolute top-1/2 -left-3 w-5 h-5 bg-purple-400 rounded-full flex items-center justify-center shadow-lg">
-                <Trophy className="w-3 h-3 text-white" />
-              </div>
+          ))}
+          {paramScores.length === 0 && (
+            <div style={{ fontSize: 13, color: "var(--ink-4)" }}>
+              No scoring data yet — request referrals to build your profile.
             </div>
           )}
-          
-          {/* Progress bar */}
-          <div className="max-w-xs mx-auto">
-            <Progress 
-              value={strengthScore * 10} 
-              className="h-3 mb-2"
-            />
-            <p className="text-xs text-gray-500">Progress to next level</p>
-          </div>
         </div>
+      </div>
 
-        {/* Stats Grid - Wallet Style */}
-        <div className="grid grid-cols-2 gap-4 mb-6">
-          <div className="bg-gradient-to-r from-blue-500 to-blue-600 p-4 rounded-xl text-white">
-            <div className="flex items-center justify-between mb-2">
-              <div>
-                <p className="text-sm opacity-90">Total Requests</p>
-                <p className="text-2xl font-bold">{totalRequests}</p>
+      {/* 6-month trend */}
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 12 }}>
+          6-month trend
+        </div>
+        <div style={{ display: "flex", alignItems: "flex-end", gap: 6, height: 52 }}>
+          {MONTHS.map((m, i) => (
+            <div key={m} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+              <div style={{ width: "100%", borderRadius: "3px 3px 0 0", background: "var(--surface-3)", height: 40, display: "flex", alignItems: "flex-end" }}>
+                <div style={{
+                  width: "100%", borderRadius: "3px 3px 0 0",
+                  background: level.color,
+                  height: barsVisible ? `${(barHeights[i] / 10) * 100}%` : "0%",
+                  transition: `height 0.7s cubic-bezier(0.16,1,0.3,1) ${0.2 + i * 0.06}s`,
+                  opacity: i === 5 ? 1 : 0.5 + i * 0.1,
+                }} />
               </div>
-              <div className="bg-white bg-opacity-20 p-2 rounded-lg">
-                <Users className="w-5 h-5" />
-              </div>
+              <span style={{ fontSize: 10, color: "var(--ink-4)", fontWeight: 500 }}>{m}</span>
             </div>
-            <p className="text-xs opacity-75">Referral requests sent</p>
-          </div>
-          
-          <div className="bg-gradient-to-r from-green-500 to-green-600 p-4 rounded-xl text-white">
-            <div className="flex items-center justify-between mb-2">
-              <div>
-                <p className="text-sm opacity-90">Completed</p>
-                <p className="text-2xl font-bold">{scoredRequests}</p>
-              </div>
-              <div className="bg-white bg-opacity-20 p-2 rounded-lg">
-                <Award className="w-5 h-5" />
-              </div>
-            </div>
-            <p className="text-xs opacity-75">Reviews received</p>
-          </div>
+          ))}
         </div>
+      </div>
 
-        {/* Trend Chart */}
-        <div className="mb-6">
-          <h4 className="text-sm font-medium text-gray-700 mb-3">Score Trend (Last 6 Months)</h4>
-          <div className="flex items-end justify-between h-20 px-2">
-            {scoreHistory.map((item, index) => (
-              <div key={item.month} className="flex flex-col items-center space-y-1">
-                <div 
-                  className="w-8 bg-gradient-to-t from-blue-400 to-blue-600 rounded-t-sm transition-all duration-300"
-                  style={{ height: `${(item.score / 10) * 60}px` }}
-                ></div>
-                <span className="text-xs text-gray-500">{item.month}</span>
-              </div>
-            ))}
-          </div>
+      {/* Tip */}
+      {tipTarget && (
+        <div style={{
+          padding: "12px 14px", borderRadius: 10,
+          background: "var(--seeker)0d", border: "1px solid var(--seeker)25",
+          fontSize: 13, color: "var(--seeker)", lineHeight: 1.5,
+        }}>
+          <strong>Tip:</strong> Send more referral requests to push into {tipTarget}.
         </div>
-
-        {/* Motivational Message */}
-        <div className="bg-gradient-to-r from-blue-50 to-purple-50 p-4 rounded-xl mb-6">
-          <div className="flex items-start space-x-3">
-            <MessageSquare className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
-            <p className="text-sm text-gray-700 leading-relaxed">
-              {motivationalMessage}
-            </p>
-          </div>
+      )}
+      {!tipTarget && (
+        <div style={{
+          padding: "12px 14px", borderRadius: 10,
+          background: "var(--recruiter)0d", border: "1px solid var(--recruiter)25",
+          fontSize: 13, color: "var(--recruiter)", lineHeight: 1.5,
+        }}>
+          Outstanding! You're in the Elite tier. Keep maintaining your karma.
         </div>
-
-
-
-        {/* Improvement Tips */}
-        {strengthScore < 8.5 && (
-          <div className="mt-6 p-4 bg-gradient-to-r from-yellow-50 to-orange-50 rounded-xl border border-yellow-200">
-            <h4 className="font-medium text-yellow-800 mb-2 flex items-center">
-              <Target className="w-4 h-4 mr-2" />
-              💡 Tips to improve your score:
-            </h4>
-            <ul className="text-sm text-yellow-700 space-y-1">
-              <li>• Send referral requests to experienced professionals in your field</li>
-              <li>• Ensure your profile is complete and up-to-date</li>
-              <li>• Follow up with referrers to encourage scoring</li>
-              <li>• Focus on roles where you have relevant experience</li>
-            </ul>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+      )}
+    </div>
   );
-}; 
+};

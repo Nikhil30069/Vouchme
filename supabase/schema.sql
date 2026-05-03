@@ -494,3 +494,141 @@ CREATE POLICY "resumes_update" ON storage.objects
 DROP POLICY IF EXISTS "resumes_delete" ON storage.objects;
 CREATE POLICY "resumes_delete" ON storage.objects
   FOR DELETE USING (bucket_id = 'resumes' AND auth.role() = 'authenticated');
+
+-- ---------------------------------------------------------------------
+-- Admin flag on profiles
+-- Set is_admin = true in Supabase dashboard for team members who need
+-- access to the admin test management panel.
+-- ---------------------------------------------------------------------
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- ---------------------------------------------------------------------
+-- test_tiers
+-- Each row represents one test tier (T1–T20 and beyond).
+-- questions is a JSONB array of question objects matching the Question type.
+-- Team members with is_admin=true can create, update, and delete tiers.
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.test_tiers (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  tier_number INTEGER NOT NULL UNIQUE,
+  title TEXT NOT NULL,
+  difficulty TEXT NOT NULL DEFAULT 'Beginner',
+  questions JSONB NOT NULL DEFAULT '[]'::JSONB,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_test_tiers_number ON public.test_tiers(tier_number);
+CREATE INDEX IF NOT EXISTS idx_test_tiers_active ON public.test_tiers(is_active);
+
+-- RLS for test_tiers
+ALTER TABLE public.test_tiers ENABLE ROW LEVEL SECURITY;
+
+-- All authenticated users can read active tiers
+DROP POLICY IF EXISTS "tt_select_authenticated" ON public.test_tiers;
+CREATE POLICY "tt_select_authenticated" ON public.test_tiers
+  FOR SELECT USING (auth.role() = 'authenticated' AND is_active = TRUE);
+
+-- Admin users can read all tiers (including inactive)
+DROP POLICY IF EXISTS "tt_select_admin" ON public.test_tiers;
+CREATE POLICY "tt_select_admin" ON public.test_tiers
+  FOR SELECT USING (
+    EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND is_admin = TRUE)
+  );
+
+-- Only admins can insert/update/delete
+DROP POLICY IF EXISTS "tt_insert_admin" ON public.test_tiers;
+CREATE POLICY "tt_insert_admin" ON public.test_tiers
+  FOR INSERT WITH CHECK (
+    EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND is_admin = TRUE)
+  );
+
+DROP POLICY IF EXISTS "tt_update_admin" ON public.test_tiers;
+CREATE POLICY "tt_update_admin" ON public.test_tiers
+  FOR UPDATE USING (
+    EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND is_admin = TRUE)
+  );
+
+DROP POLICY IF EXISTS "tt_delete_admin" ON public.test_tiers;
+CREATE POLICY "tt_delete_admin" ON public.test_tiers
+  FOR DELETE USING (
+    EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND is_admin = TRUE)
+  );
+
+-- ---------------------------------------------------------------------
+-- test_completions
+-- One row per (user, tier) — upserted on each attempt.
+-- Server-side source of truth for scores, karma, and retake cooldowns.
+-- Prevents localStorage manipulation from bypassing gates or faking karma.
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.test_completions (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id     UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  tier        INTEGER NOT NULL CHECK (tier BETWEEN 1 AND 20),
+  score       INTEGER NOT NULL CHECK (score BETWEEN 0 AND 10),
+  total       INTEGER NOT NULL DEFAULT 10,
+  karma_change NUMERIC(6, 3) NOT NULL,
+  completed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (user_id, tier)
+);
+
+CREATE INDEX IF NOT EXISTS idx_tc_user ON public.test_completions(user_id);
+
+ALTER TABLE public.test_completions ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "tc_select_own" ON public.test_completions;
+CREATE POLICY "tc_select_own" ON public.test_completions
+  FOR SELECT USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "tc_insert_own" ON public.test_completions;
+CREATE POLICY "tc_insert_own" ON public.test_completions
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "tc_update_own" ON public.test_completions;
+CREATE POLICY "tc_update_own" ON public.test_completions
+  FOR UPDATE USING (auth.uid() = user_id);
+
+-- Admins can read all completions (for analytics / leaderboard)
+DROP POLICY IF EXISTS "tc_select_admin" ON public.test_completions;
+CREATE POLICY "tc_select_admin" ON public.test_completions
+  FOR SELECT USING (
+    EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND is_admin = TRUE)
+  );
+
+-- ---------------------------------------------------------------------
+-- get_leaderboard
+-- Returns aggregated per-user stats for the global leaderboard.
+-- SECURITY DEFINER so it can read all users' completions without
+-- exposing raw rows — only aggregate totals are returned.
+-- ---------------------------------------------------------------------
+DROP FUNCTION IF EXISTS public.get_leaderboard(INTEGER);
+CREATE OR REPLACE FUNCTION public.get_leaderboard(limit_n INTEGER DEFAULT 100)
+RETURNS TABLE (
+  user_id      UUID,
+  name         TEXT,
+  organization TEXT,
+  tests_passed BIGINT,
+  total_karma  NUMERIC
+)
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT
+    p.id                                                          AS user_id,
+    COALESCE(p.name, split_part(p.email, '@', 1))                AS name,
+    COALESCE(p.current_organization, '—')                        AS organization,
+    COUNT(tc.id) FILTER (WHERE tc.score >= 6)                    AS tests_passed,
+    COALESCE(SUM(tc.karma_change), 0)                            AS total_karma
+  FROM public.profiles p
+  INNER JOIN public.test_completions tc ON tc.user_id = p.id
+  GROUP BY p.id, p.name, p.email, p.current_organization
+  ORDER BY total_karma DESC, tests_passed DESC
+  LIMIT limit_n;
+$$;
+
+-- Only authenticated users may call this function
+REVOKE ALL ON FUNCTION public.get_leaderboard(INTEGER) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.get_leaderboard(INTEGER) TO authenticated;

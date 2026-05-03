@@ -1,327 +1,231 @@
-import { useState, useEffect } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { 
-  Trophy, 
-  Star, 
-  Phone, 
-  Mail, 
-  Users, 
-  TrendingUp,
-  Eye,
-  EyeOff,
-  Crown,
-  Award,
-  Zap,
-  Briefcase
-} from "lucide-react";
+import { useEffect, useState } from "react";
+import { Mail, Phone, Users, X } from "lucide-react";
 import { useReferralStore } from "@/stores/referralStore";
 import { User } from "@/stores/authStore";
 import { toast } from "sonner";
 import { JOB_ROLES } from "@/constants/roles";
+import { ScoreRing } from "@/components/ui/ScoreRing";
+import { primaryBtnStyle, secondaryBtnStyle, badgeStyle } from "./SeekerDashboard";
+import { EmptyState } from "./SeekerDashboard";
 
 interface TopCandidatesProps {
   user: User;
-  jobPostingId?: string;
-  onClose?: () => void;
+  jobPostingId: string;
+  onClose: () => void;
 }
 
+const rankColors = [
+  { bg: "linear-gradient(135deg, #f59e0b, #d97706)", label: "1st" },
+  { bg: "linear-gradient(135deg, #94a3b8, #64748b)", label: "2nd" },
+  { bg: "linear-gradient(135deg, #cd7f32, #a0522d)", label: "3rd" },
+];
+
+const scoreLevel = (s: number): { color: string; label: string } => {
+  if (s >= 8.5) return { color: "var(--referrer)", label: "Elite" };
+  if (s >= 7.5) return { color: "var(--recruiter)", label: "Excellent" };
+  if (s >= 6.5) return { color: "var(--seeker)", label: "Good" };
+  if (s >= 5.5) return { color: "#d97706", label: "Average" };
+  return { color: "var(--ink-3)", label: "Developing" };
+};
+
+const fmtCtc = (n?: number | null) => {
+  if (!n) return "—";
+  if (n >= 10000000) return `₹${(n / 10000000).toFixed(1)}Cr`;
+  if (n >= 100000) return `₹${(n / 100000).toFixed(1)}L`;
+  return `₹${n.toLocaleString()}`;
+};
+
 export const TopCandidates = ({ user, jobPostingId, onClose }: TopCandidatesProps) => {
-  const { 
-    getTopCandidates, 
-    updateCandidateMatch,
-    getCandidateContactDetails,
-    topCandidates, 
-    loading, 
-    error 
-  } = useReferralStore();
+  const { getTopCandidates, updateCandidateMatch, getCandidateContactDetails, topCandidates, loading, error } = useReferralStore();
+  const [interested, setInterested] = useState<Set<string>>(new Set());
+  const [unlocked, setUnlocked] = useState<Set<string>>(new Set());
+  const [contacts, setContacts] = useState<Record<string, { phone: string; email: string }>>({});
+  const [working, setWorking] = useState<Set<string>>(new Set());
 
-  const [unlockedPhones, setUnlockedPhones] = useState<Set<string>>(new Set());
-  const [interestedCandidates, setInterestedCandidates] = useState<Set<string>>(new Set());
-  const [contactDetails, setContactDetails] = useState<Record<string, { phone: string; email: string }>>({});
+  useEffect(() => { getTopCandidates(jobPostingId); }, [jobPostingId, getTopCandidates]);
 
-  useEffect(() => {
-    if (jobPostingId) {
-      console.log('TopCandidates: Fetching for job posting ID:', jobPostingId);
-      getTopCandidates(jobPostingId);
-    } else {
-      console.error('TopCandidates: No job posting ID provided');
-    }
-  }, [jobPostingId, getTopCandidates]);
-
-  const handleShowInterest = async (candidateId: string) => {
-    if (!jobPostingId) {
-      toast.error("Job posting ID not available");
-      return;
-    }
-
+  const handleInterest = async (id: string) => {
+    if (working.has(id)) return;
+    setWorking((p) => new Set(p).add(id));
     try {
-      // Update the candidate match to show interest
-      await updateCandidateMatch(candidateId, jobPostingId, user.id, { is_interested: true });
-      
-      // Update UI only after successful DB operation
-      setInterestedCandidates(prev => new Set(prev).add(candidateId));
-      toast.success("Interest marked successfully!");
-    } catch (error) {
-      toast.error("Failed to mark interest. Please try again.");
+      await updateCandidateMatch(id, jobPostingId, user.id, { is_interested: true });
+      setInterested((p) => new Set(p).add(id));
+      toast.success("Interest marked!");
+    } catch {
+      toast.error("Failed. Try again.");
+    } finally {
+      setWorking((p) => { const n = new Set(p); n.delete(id); return n; });
     }
   };
 
-  const handleUnlockPhone = async (candidateId: string) => {
-    if (!jobPostingId) {
-      toast.error("Job posting ID not available");
-      return;
-    }
-
+  const handleUnlock = async (id: string) => {
+    if (working.has(id)) return;
+    setWorking((p) => new Set(p).add(id));
     try {
-      // Get candidate contact details first
-      const details = await getCandidateContactDetails(candidateId);
-      if (!details) {
-        toast.error("Failed to get candidate contact details");
-        return;
-      }
-
-      // Update the candidate match to unlock phone
-      await updateCandidateMatch(candidateId, jobPostingId, user.id, { phone_unlocked: true });
-      
-      // Update UI only after successful DB operation
-      setUnlockedPhones(prev => new Set(prev).add(candidateId));
-      setContactDetails(prev => ({ ...prev, [candidateId]: details }));
-      toast.success("Contact details unlocked!");
-    } catch (error) {
-      toast.error("Failed to unlock contact details. Please try again.");
+      const details = await getCandidateContactDetails(id);
+      if (!details) { toast.error("No contact details available."); return; }
+      await updateCandidateMatch(id, jobPostingId, user.id, { phone_unlocked: true });
+      setUnlocked((p) => new Set(p).add(id));
+      setContacts((p) => ({ ...p, [id]: details }));
+      toast.success("Contact unlocked!");
+    } catch {
+      toast.error("Failed to unlock. Try again.");
+    } finally {
+      setWorking((p) => { const n = new Set(p); n.delete(id); return n; });
     }
   };
-
-  const getScoreLevel = (score: number) => {
-    if (score >= 8.5) return { level: "Elite", color: "text-purple-600", bgColor: "bg-purple-100", icon: Crown };
-    if (score >= 7.5) return { level: "Excellent", color: "text-green-600", bgColor: "bg-green-100", icon: Trophy };
-    if (score >= 6.5) return { level: "Good", color: "text-blue-600", bgColor: "bg-blue-100", icon: Star };
-    if (score >= 5.5) return { level: "Average", color: "text-yellow-600", bgColor: "bg-yellow-100", icon: Award };
-    return { level: "Developing", color: "text-orange-600", bgColor: "bg-orange-100", icon: Zap };
-  };
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-        <span className="ml-2 text-gray-600">Finding top candidates...</span>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="space-y-6">
-        {/* Header with Back Button */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900">Top Candidates</h2>
-            <p className="text-gray-600">Error occurred while fetching candidates</p>
-          </div>
-          {onClose && (
-            <Button variant="outline" onClick={onClose}>
-              Back to Dashboard
-            </Button>
-          )}
-        </div>
-
-        <Card className="border-red-200 bg-red-50">
-          <CardContent className="p-6">
-            <div className="text-center">
-              <div className="text-red-600 mb-2">⚠️ Error</div>
-              <p className="text-red-700 mb-4">{error}</p>
-              <div className="flex justify-center space-x-3">
-                <Button onClick={() => jobPostingId && getTopCandidates(jobPostingId)} className="bg-blue-600 hover:bg-blue-700">
-                  Try Again
-                </Button>
-                {onClose && (
-                  <Button variant="outline" onClick={onClose}>
-                    Back to Dashboard
-                  </Button>
-                )}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
 
   return (
-    <div className="space-y-6">
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Top Candidates</h2>
-          <p className="text-gray-600">Best matches based on strength scores</p>
+          <h2 style={{ fontSize: 18, fontWeight: 700, letterSpacing: "-0.03em", color: "var(--ink)" }}>Top Candidates</h2>
+          <div style={{ fontSize: 13, color: "var(--ink-3)", marginTop: 2 }}>Best matches by karma score</div>
         </div>
-        {onClose && (
-          <Button variant="outline" onClick={onClose}>
-            Back
-          </Button>
-        )}
+        <button onClick={onClose} style={secondaryBtnStyle}>
+          <X size={13} /> Back
+        </button>
       </div>
 
-      {/* Results */}
-      {topCandidates.length === 0 ? (
-        <Card>
-          <CardContent className="p-12">
-            <div className="text-center">
-              <Users className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">No candidates found</h3>
-              <p className="text-gray-500 mb-4">
-                No candidates with strength scores found for this job posting.
-              </p>
-              <div className="bg-blue-50 p-4 rounded-lg">
-                <p className="text-sm text-blue-700">
-                  <strong>Note:</strong> Candidates need to have received scores from referrers to appear here.
-                </p>
+      {loading && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="surface-card" style={{ padding: 20, display: "flex", gap: 16, alignItems: "center" }}>
+              <div style={{ width: 64, height: 64, borderRadius: "50%", background: "var(--surface-3)" }} />
+              <div style={{ flex: 1 }}>
+                <div style={{ height: 14, width: "50%", background: "var(--surface-3)", borderRadius: 6, marginBottom: 8 }} />
+                <div style={{ height: 10, width: "70%", background: "var(--surface-3)", borderRadius: 6 }} />
               </div>
             </div>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="space-y-6">
-          {topCandidates.map((candidate, index) => {
-            const scoreInfo = getScoreLevel(candidate.strength_score);
-            const IconComponent = scoreInfo.icon;
-            const isInterested = interestedCandidates.has(candidate.seeker_id);
-            const isPhoneUnlocked = unlockedPhones.has(candidate.seeker_id);
-
-            return (
-              <Card key={candidate.seeker_id} className="relative overflow-hidden">
-                {/* Rank Badge */}
-                <div className="absolute top-4 right-4">
-                  <div className="w-8 h-8 bg-gradient-to-r from-yellow-400 to-orange-500 rounded-full flex items-center justify-center text-white font-bold text-sm">
-                    {index + 1}
-                  </div>
-                </div>
-
-                <CardContent className="p-6">
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex-1">
-                      <div className="flex items-center space-x-3 mb-2">
-                        <h3 className="text-xl font-semibold text-gray-900">
-                          {candidate.seeker_name}
-                        </h3>
-                        <Badge variant="outline">{candidate.seeker_experience} years exp</Badge>
-                        <Badge className={scoreInfo.bgColor + " " + scoreInfo.color}>
-                          <IconComponent className="w-3 h-3 mr-1" />
-                          {scoreInfo.level}
-                        </Badge>
-                      </div>
-                      
-                      <div className="flex items-center space-x-4 text-sm text-gray-600 mb-3">
-                        <div className="flex items-center space-x-1">
-                          <Briefcase className="w-4 h-4" />
-                          <span>{JOB_ROLES.find((roleObj) => roleObj.value === candidate.seeker_role)?.label ?? candidate.seeker_role}</span>
-                        </div>
-                        <div className="flex items-center space-x-1">
-                          <Star className="w-4 h-4" />
-                          <span>{candidate.total_scores} reviews</span>
-                        </div>
-                        <div className="flex items-center space-x-1">
-                          <span className="font-medium">Expected CTC:</span>
-                          <span>₹{candidate.expected_ctc?.toLocaleString() || 'Not specified'}</span>
-                        </div>
-                        <div className="flex items-center space-x-1">
-                          <span className="font-medium">Current CTC:</span>
-                          <span>₹{candidate.current_ctc?.toLocaleString() || 'Not specified'}</span>
-                        </div>
-                      </div>
-
-                      {/* Strength Score Display */}
-                      <div className="flex items-center space-x-4">
-                        <div className="flex items-center space-x-2">
-                          <TrendingUp className="w-5 h-5 text-blue-600" />
-                          <span className="font-medium text-gray-900">Strength Score:</span>
-                          <span className="text-2xl font-bold text-blue-600">
-                            {candidate.strength_score.toFixed(1)}
-                          </span>
-                          <span className="text-gray-500">/10</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Action Buttons */}
-                  <div className="flex items-center space-x-3 pt-4 border-t">
-                    {!isInterested ? (
-                      <Button
-                        onClick={() => handleShowInterest(candidate.seeker_id)}
-                        className="bg-green-600 hover:bg-green-700 text-white"
-                      >
-                        <Eye className="w-4 h-4 mr-2" />
-                        Show Interest
-                      </Button>
-                    ) : (
-                      <Button variant="outline" className="text-green-600 border-green-600">
-                        <Eye className="w-4 h-4 mr-2" />
-                        Interested
-                      </Button>
-                    )}
-
-                    {isInterested && !isPhoneUnlocked && (
-                      <Button
-                        onClick={() => handleUnlockPhone(candidate.seeker_id)}
-                        variant="outline"
-                        className="border-blue-600 text-blue-600 hover:bg-blue-50"
-                      >
-                        <Phone className="w-4 h-4 mr-2" />
-                        Unlock Phone
-                      </Button>
-                    )}
-
-                    {isPhoneUnlocked && contactDetails[candidate.seeker_id] && (
-                      <div className="flex items-center space-x-4">
-                        <Button variant="outline" className="text-green-600 border-green-600">
-                          <Phone className="w-4 h-4 mr-2" />
-                          {contactDetails[candidate.seeker_id].phone}
-                        </Button>
-                        <Button variant="outline">
-                          <Mail className="w-4 h-4 mr-2" />
-                          {contactDetails[candidate.seeker_id].email}
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Score Insights */}
-                  <div className="mt-4 p-3 bg-gray-50 rounded-lg">
-                    <p className="text-sm text-gray-600">
-                      <strong>Why this candidate:</strong> {candidate.strength_score.toFixed(1)}/10 strength score 
-                      based on {candidate.total_scores} professional reviews. 
-                      {candidate.strength_score >= 8.5 && " Elite performer with exceptional ratings."}
-                      {candidate.strength_score >= 7.5 && candidate.strength_score < 8.5 && " Excellent candidate with strong professional backing."}
-                      {candidate.strength_score >= 6.5 && candidate.strength_score < 7.5 && " Good candidate with solid professional feedback."}
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
+          ))}
         </div>
       )}
 
-      {/* Info Card */}
-      <Card className="bg-blue-50 border-blue-200">
-        <CardContent className="p-4">
-          <div className="flex items-start space-x-3">
-            <Trophy className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
-            <div>
-              <h4 className="font-medium text-blue-900 mb-2">How Strength Scores Work</h4>
-              <ul className="text-sm text-blue-800 space-y-1">
-                <li>• Candidates are scored by experienced professionals in their field</li>
-                <li>• Scores are based on technical abilities and cultural fit</li>
-                <li>• Higher scores indicate stronger professional reputation</li>
-                <li>• Only candidates with multiple reviews are shown</li>
-              </ul>
+      {error && (
+        <div className="surface-card" style={{ padding: 20, textAlign: "center" }}>
+          <div style={{ fontSize: 13, color: "#dc2626", marginBottom: 12 }}>{error}</div>
+          <button onClick={() => getTopCandidates(jobPostingId)} style={primaryBtnStyle}>Retry</button>
+        </div>
+      )}
+
+      {!loading && !error && topCandidates.length === 0 && (
+        <EmptyState
+          icon={<Users size={40} color="var(--ink-4)" />}
+          title="No candidates yet"
+          body="Candidates need referral scores to appear here. Share your posting with referrers."
+        />
+      )}
+
+      {!loading && !error && topCandidates.map((c, i) => {
+        const rank = rankColors[i] ?? rankColors[2];
+        const level = scoreLevel(c.strength_score);
+        const isInterested = interested.has(c.seeker_id);
+        const isUnlocked = unlocked.has(c.seeker_id);
+        const isWorking = working.has(c.seeker_id);
+        const roleLabel = JOB_ROLES.find((r) => r.value === c.seeker_role)?.label ?? c.seeker_role;
+
+        return (
+          <div key={c.seeker_id} className="surface-card" style={{ padding: 20, position: "relative", animationDelay: `${i * 0.08}s` }}>
+            {/* Rank badge */}
+            <div style={{
+              position: "absolute", top: 16, right: 16,
+              width: 32, height: 32, borderRadius: "50%",
+              background: rank.bg,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 11, fontWeight: 700, color: "white",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+            }}>
+              {rank.label}
+            </div>
+
+            {/* Top row: ring + info */}
+            <div style={{ display: "flex", gap: 18, alignItems: "flex-start", marginBottom: 16 }}>
+              <ScoreRing score={c.strength_score} size={64} color={level.color} delay={i * 0.12} />
+              <div style={{ flex: 1 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: "var(--ink)", letterSpacing: "-0.02em" }}>
+                    {c.seeker_name}
+                  </div>
+                  <span style={{
+                    ...badgeStyle,
+                    background: level.color + "18", color: level.color,
+                    borderColor: level.color + "30",
+                  }}>
+                    {level.label}
+                  </span>
+                </div>
+                <div style={{ fontSize: 13, color: "var(--ink-2)", marginBottom: 6 }}>
+                  {roleLabel} · {c.seeker_experience} yrs exp · {c.total_scores} review{c.total_scores !== 1 ? "s" : ""}
+                </div>
+                <div style={{ display: "flex", gap: 16 }}>
+                  {[["Current CTC", fmtCtc(c.current_ctc)], ["Expected CTC", fmtCtc(c.expected_ctc)]].map(([l, v]) => (
+                    <div key={l}>
+                      <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--ink-4)", marginBottom: 1 }}>{l}</div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--ink)" }}>{v}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", paddingTop: 14, borderTop: "1px solid var(--border-soft)" }}>
+              {!isInterested ? (
+                <button
+                  onClick={() => handleInterest(c.seeker_id)}
+                  disabled={isWorking}
+                  style={{ ...primaryBtnStyle, background: "var(--recruiter)" }}
+                >
+                  {isWorking ? "…" : "Show interest"}
+                </button>
+              ) : (
+                <span style={{
+                  ...badgeStyle,
+                  background: "var(--recruiter)18", color: "var(--recruiter)", borderColor: "var(--recruiter)30",
+                  height: 32, display: "inline-flex", alignItems: "center",
+                }}>
+                  ✓ Interested
+                </span>
+              )}
+
+              {isInterested && !isUnlocked && (
+                <button
+                  onClick={() => handleUnlock(c.seeker_id)}
+                  disabled={isWorking}
+                  style={secondaryBtnStyle}
+                >
+                  <Phone size={12} /> {isWorking ? "Unlocking…" : "Unlock contact"}
+                </button>
+              )}
+
+              {isUnlocked && contacts[c.seeker_id] && (
+                <>
+                  <button style={{ ...secondaryBtnStyle, color: "var(--recruiter)", borderColor: "var(--recruiter)40" }}>
+                    <Phone size={12} /> {contacts[c.seeker_id].phone}
+                  </button>
+                  <button style={{ ...secondaryBtnStyle }}>
+                    <Mail size={12} /> {contacts[c.seeker_id].email}
+                  </button>
+                </>
+              )}
             </div>
           </div>
-        </CardContent>
-      </Card>
+        );
+      })}
+
+      {/* Info card */}
+      <div style={{
+        padding: "14px 16px", borderRadius: 12,
+        background: "var(--seeker)0a", border: "1px solid var(--seeker)20",
+      }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: "var(--seeker)", marginBottom: 8 }}>How karma scores work</div>
+        <ul style={{ fontSize: 12, color: "var(--ink-3)", lineHeight: 1.7, paddingLeft: 14 }}>
+          <li>Candidates are scored by experienced professionals in their field</li>
+          <li>Scores reflect technical ability, communication, and culture fit</li>
+          <li>Show interest first; unlock contact when you're ready to reach out</li>
+        </ul>
+      </div>
     </div>
   );
-}; 
+};

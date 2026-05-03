@@ -18,6 +18,7 @@ export interface User {
   current_organization?: string | null;
   onboarded: boolean;
   createdAt?: string | null;
+  is_admin?: boolean;
 }
 
 export type AuthStatus = "loading" | "unauthenticated" | "needs-onboarding" | "needs-role" | "ready";
@@ -57,6 +58,7 @@ const profileToUser = (row: any): User => ({
   current_organization: row.current_organization ?? null,
   onboarded: !!row.onboarded,
   createdAt: row.created_at ?? null,
+  is_admin: !!row.is_admin,
 });
 
 export const useAuthStore = create<AuthState>()(

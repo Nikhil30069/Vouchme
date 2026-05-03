@@ -18,22 +18,24 @@ export default {
     extend: {
       fontFamily: {
         sans: [
-          "Inter",
+          "Geist",
           "ui-sans-serif",
           "system-ui",
           "-apple-system",
-          "Segoe UI",
-          "Roboto",
           "Helvetica Neue",
           "Arial",
           "sans-serif",
         ],
         display: [
-          "Plus Jakarta Sans",
-          "Inter",
+          "Geist",
           "ui-sans-serif",
           "system-ui",
           "sans-serif",
+        ],
+        mono: [
+          "Geist Mono",
+          "ui-monospace",
+          "monospace",
         ],
       },
       colors: {

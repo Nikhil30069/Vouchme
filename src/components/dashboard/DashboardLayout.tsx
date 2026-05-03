@@ -1,256 +1,291 @@
-import { ReactNode } from "react";
-import { motion } from "framer-motion";
-import {
-  Check,
-  ChevronsUpDown,
-  LogOut,
-  Plus,
-  Sparkles,
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { ReactNode, useRef, useState, useEffect, type ComponentType } from "react";
+import { ChevronDown, LogOut } from "lucide-react";
 import { useAuthStore, type AppRole } from "@/stores/authStore";
-import { ROLE_CONFIG, ROLE_ORDER } from "@/constants/appRoles";
+import { ROLE_CONFIG } from "@/constants/appRoles";
+
+export interface SideItem {
+  id: string;
+  label: string;
+  icon: ComponentType<{ size?: number; color?: string; className?: string }>;
+}
 
 interface DashboardLayoutProps {
   children: ReactNode;
+  sideItems: SideItem[];
+  activeTab: string;
+  onTabChange: (tab: string) => void;
 }
 
-export const DashboardLayout = ({ children }: DashboardLayoutProps) => {
+const roleColor: Record<AppRole, string> = {
+  seeker: "var(--seeker)",
+  recruiter: "var(--recruiter)",
+  referrer: "var(--referrer)",
+};
+const roleGrad: Record<AppRole, string> = {
+  seeker: "linear-gradient(135deg, #1e3a8a, #2563eb)",
+  recruiter: "linear-gradient(135deg, #064e3b, #059669)",
+  referrer: "linear-gradient(135deg, #3b0764, #7c3aed)",
+};
+
+const LogoMark = () => (
+  <div style={{
+    width: 28, height: 28, borderRadius: 8,
+    background: "var(--ink)", display: "flex", alignItems: "center", justifyContent: "center",
+  }}>
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="white" stroke="none">
+      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+    </svg>
+  </div>
+);
+
+const roleIcons: Record<AppRole, ReactNode> = {
+  seeker: (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+    </svg>
+  ),
+  recruiter: (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
+    </svg>
+  ),
+  referrer: (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/>
+    </svg>
+  ),
+};
+
+export const DashboardLayout = ({ children, sideItems, activeTab, onTabChange }: DashboardLayoutProps) => {
   const user = useAuthStore((s) => s.user);
   const activeRole = useAuthStore((s) => s.activeRole);
   const setActiveRole = useAuthStore((s) => s.setActiveRole);
-  const addRoleToUser = useAuthStore((s) => s.addRoleToUser);
   const signOut = useAuthStore((s) => s.signOut);
+  const addRoleToUser = useAuthStore((s) => s.addRoleToUser);
+
+  const [showDropdown, setShowDropdown] = useState(false);
+  const dropRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (dropRef.current && !dropRef.current.contains(e.target as Node)) {
+        setShowDropdown(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
 
   if (!user || !activeRole) return null;
 
-  const cfg = ROLE_CONFIG[activeRole];
-  const Icon = cfg.icon;
-
   const initials = (user.name || user.email || "?")
-    .split(/\s|@/)
-    .filter(Boolean)
+    .split(/\s|@/).filter(Boolean)
     .map((s) => s[0]?.toUpperCase() ?? "")
-    .slice(0, 2)
-    .join("");
+    .slice(0, 2).join("");
 
+  const color = roleColor[activeRole];
   const otherRoles = (user.roles ?? []).filter((r) => r !== activeRole);
-  const missingRoles = ROLE_ORDER.filter((r) => !user.roles?.includes(r));
-
-  const handleSwitch = (role: AppRole) => setActiveRole(role);
-  const handleAdd = async (role: AppRole) => {
-    await addRoleToUser(role);
-  };
 
   return (
-    <div className="min-h-screen dashboard-bg">
-      <header className="sticky top-0 z-40 border-b border-slate-200/70 bg-white/80 backdrop-blur-xl">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-3">
-            <div className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-brand-500 to-fuchsia-500 text-white shadow-soft">
-              <Sparkles className="h-5 w-5" />
-            </div>
-            <div className="hidden sm:block">
-              <div className="font-display text-lg font-bold tracking-tight">
-                Hire<span className="gradient-text">Eco</span>
-              </div>
-              <div className="text-xs text-slate-500">Transparent hiring, powered by karma.</div>
-            </div>
+    <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
+      {/* Topbar */}
+      <header style={{
+        position: "sticky", top: 0, zIndex: 50,
+        background: "rgba(255,255,255,0.90)",
+        backdropFilter: "blur(20px)",
+        borderBottom: "1px solid var(--border-soft)",
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        padding: "0 24px", height: 56, flexShrink: 0,
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 17, fontWeight: 700, letterSpacing: "-0.04em", color: "var(--ink)" }}>
+            <LogoMark />
+            vouch<span style={{ opacity: 0.45 }}>me</span>
           </div>
-
-          <div className="flex items-center gap-2 sm:gap-3">
-            <RoleSwitcher
-              activeRole={activeRole}
-              otherRoles={otherRoles}
-              missingRoles={missingRoles}
-              onSwitch={handleSwitch}
-              onAdd={handleAdd}
-            />
-
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button className="flex items-center gap-3 rounded-full border border-slate-200 bg-white px-1.5 py-1 pr-3 transition hover:shadow-sm">
-                  <Avatar className="h-8 w-8">
-                    <AvatarImage src={user.avatar_url ?? undefined} />
-                    <AvatarFallback className="bg-gradient-to-br from-brand-500 to-fuchsia-500 text-xs text-white">
-                      {initials || "U"}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="hidden text-left sm:block">
-                    <div className="text-sm font-semibold leading-tight text-slate-900">
-                      {user.name || "Account"}
-                    </div>
-                    <div className="text-[11px] leading-tight text-slate-500">
-                      {user.email}
-                    </div>
-                  </div>
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-64">
-                <div className="flex items-center gap-3 p-3">
-                  <Avatar className="h-10 w-10">
-                    <AvatarImage src={user.avatar_url ?? undefined} />
-                    <AvatarFallback className="bg-gradient-to-br from-brand-500 to-fuchsia-500 text-xs text-white">
-                      {initials || "U"}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-semibold text-slate-900">
-                      {user.name || "Account"}
-                    </div>
-                    <div className="truncate text-xs text-slate-500">{user.email}</div>
-                  </div>
-                </div>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={() => signOut()}
-                  className="text-rose-600 focus:bg-rose-50 focus:text-rose-700"
-                >
-                  <LogOut className="mr-2 h-4 w-4" /> Sign out
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+          {/* Role pill */}
+          <div style={{
+            display: "flex", alignItems: "center", gap: 6,
+            padding: "4px 10px", borderRadius: 999,
+            background: color + "15",
+            border: `1px solid ${color}30`,
+          }}>
+            <div style={{
+              width: 16, height: 16, borderRadius: "50%",
+              background: roleGrad[activeRole],
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}>
+              {roleIcons[activeRole]}
+            </div>
+            <span style={{ fontSize: 12, fontWeight: 600, color, textTransform: "capitalize" }}>{activeRole}</span>
           </div>
         </div>
 
-        <div className="mx-auto flex max-w-7xl items-center gap-2 px-4 pb-3 sm:px-6 lg:px-8">
-          <span className={cfg.pillClass}>
-            <Icon className="h-3 w-3" /> Working as {cfg.label}
-          </span>
-          <span className="text-xs text-slate-500">
-            Switch roles anytime from the avatar menu — your data stays connected.
-          </span>
+        {/* User menu */}
+        <div style={{ position: "relative" }} ref={dropRef}>
+          <button
+            onClick={() => setShowDropdown(!showDropdown)}
+            style={{
+              display: "flex", alignItems: "center", gap: 7,
+              background: "transparent", border: "none", cursor: "pointer",
+              padding: "4px 8px", borderRadius: 8,
+              fontFamily: "inherit",
+            }}
+          >
+            <div style={{
+              width: 32, height: 32, borderRadius: "50%",
+              background: "var(--ink)", color: "white",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 12, fontWeight: 600,
+            }}>
+              {initials || "U"}
+            </div>
+            <span style={{ fontSize: 13, fontWeight: 600, color: "var(--ink-2)" }}>
+              {user.name?.split(" ")[0] || "Account"}
+            </span>
+            <ChevronDown size={13} color="var(--ink-3)" />
+          </button>
+
+          {showDropdown && (
+            <div style={{
+              position: "absolute", top: "calc(100% + 6px)", right: 0,
+              background: "var(--surface)",
+              border: "1px solid var(--border-soft)",
+              borderRadius: 14,
+              boxShadow: "0 20px 60px rgba(14,14,17,0.13), 0 4px 12px rgba(14,14,17,0.06)",
+              minWidth: 200, zIndex: 100,
+              overflow: "hidden",
+              animation: "scaleIn 0.2s var(--ease-out)",
+              transformOrigin: "top right",
+            }}>
+              {/* User info */}
+              <div style={{ padding: "12px 14px 10px" }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--ink)" }}>{user.name}</div>
+                <div style={{ fontSize: 12, color: "var(--ink-3)" }}>{user.email}</div>
+              </div>
+              <div style={{ height: 1, background: "var(--border-soft)", margin: "4px 0" }} />
+
+              {/* Switch role options */}
+              {otherRoles.length > 0 && (
+                <div style={{ padding: "6px" }}>
+                  {otherRoles.map((role) => (
+                    <button
+                      key={role}
+                      onClick={() => { setActiveRole(role); setShowDropdown(false); }}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 10,
+                        padding: "10px 14px", width: "100%",
+                        background: "none", border: "none", cursor: "pointer",
+                        fontSize: 14, fontWeight: 500, color: "var(--ink-2)",
+                        borderRadius: 8, transition: "background 0.1s",
+                        fontFamily: "inherit", textAlign: "left",
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = "var(--surface-2)"; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = "none"; }}
+                    >
+                      <div style={{
+                        width: 26, height: 26, borderRadius: 6,
+                        background: roleGrad[role],
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                      }}>
+                        {roleIcons[role]}
+                      </div>
+                      Switch to {role.charAt(0).toUpperCase() + role.slice(1)}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <div style={{ height: 1, background: "var(--border-soft)", margin: "4px 0" }} />
+              <div style={{ padding: "6px" }}>
+                <button
+                  onClick={() => signOut()}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 10,
+                    padding: "10px 14px", width: "100%", margin: "0",
+                    background: "none", border: "none", cursor: "pointer",
+                    fontSize: 14, fontWeight: 500, color: "#dc2626",
+                    borderRadius: 8, fontFamily: "inherit", textAlign: "left",
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = "#fef2f2"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = "none"; }}
+                >
+                  <LogOut size={14} /> Sign out
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </header>
 
-      <motion.main
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3 }}
-        className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8"
-      >
-        {children}
-      </motion.main>
-    </div>
-  );
-};
-
-interface RoleSwitcherProps {
-  activeRole: AppRole;
-  otherRoles: AppRole[];
-  missingRoles: AppRole[];
-  onSwitch: (role: AppRole) => void;
-  onAdd: (role: AppRole) => Promise<void> | void;
-}
-
-const RoleSwitcher = ({
-  activeRole,
-  otherRoles,
-  missingRoles,
-  onSwitch,
-  onAdd,
-}: RoleSwitcherProps) => {
-  const cfg = ROLE_CONFIG[activeRole];
-  const Icon = cfg.icon;
-
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant="outline"
-          className="h-9 gap-2 rounded-full border-slate-200 bg-white pl-1 pr-3 text-sm font-medium text-slate-700 hover:bg-white hover:shadow-sm"
-        >
-          <span
-            className={`grid h-7 w-7 place-items-center rounded-full bg-gradient-to-br ${cfg.gradient} text-white`}
+      {/* Body: sidebar + content */}
+      <div style={{ display: "flex", flex: 1 }}>
+        {/* Sidebar */}
+        <aside style={{
+          width: 220, flexShrink: 0,
+          borderRight: "1px solid var(--border-soft)",
+          padding: "20px 12px",
+          display: "flex", flexDirection: "column", gap: 2,
+          position: "sticky", top: 56,
+          height: "calc(100vh - 56px)", overflowY: "auto",
+          background: "var(--surface)",
+        }}>
+          {sideItems.map((item) => {
+            const ItemIcon = item.icon;
+            const active = activeTab === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => onTabChange(item.id)}
+                style={{
+                  display: "flex", alignItems: "center", gap: 10,
+                  fontSize: 14, fontWeight: active ? 600 : 500,
+                  color: active ? "var(--ink)" : "var(--ink-3)",
+                  padding: "9px 12px", borderRadius: 10,
+                  cursor: "pointer", transition: "all 0.15s",
+                  border: "none", background: active ? "var(--surface-2)" : "none",
+                  width: "100%", textAlign: "left",
+                  letterSpacing: "-0.01em",
+                  fontFamily: "inherit",
+                }}
+                onMouseEnter={(e) => { if (!active) { e.currentTarget.style.background = "var(--surface-2)"; e.currentTarget.style.color = "var(--ink)"; } }}
+                onMouseLeave={(e) => { if (!active) { e.currentTarget.style.background = "none"; e.currentTarget.style.color = "var(--ink-3)"; } }}
+              >
+                <ItemIcon size={15} color={active ? "var(--ink)" : "var(--ink-3)"} />
+                {item.label}
+              </button>
+            );
+          })}
+          <div style={{ height: 1, background: "var(--border-soft)", margin: "12px 4px" }} />
+          <button
+            onClick={() => useAuthStore.getState().setActiveRole(null as any)}
+            style={{
+              display: "flex", alignItems: "center", gap: 10,
+              fontSize: 14, fontWeight: 500, color: "var(--ink-2)",
+              padding: "9px 12px", borderRadius: 10,
+              cursor: "pointer", border: "none", background: "none",
+              width: "100%", textAlign: "left", fontFamily: "inherit",
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = "var(--surface-2)"; e.currentTarget.style.color = "var(--ink)"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = "none"; e.currentTarget.style.color = "var(--ink-2)"; }}
           >
-            <Icon className="h-3.5 w-3.5" />
-          </span>
-          <span className="hidden sm:inline">{cfg.label}</span>
-          <ChevronsUpDown className="h-3.5 w-3.5 text-slate-400" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-72">
-        <DropdownMenuLabel className="text-xs font-medium uppercase tracking-wider text-slate-500">
-          Your roles
-        </DropdownMenuLabel>
-        <RoleRow role={activeRole} active onSelect={() => {}} />
-        {otherRoles.map((r) => (
-          <RoleRow key={r} role={r} onSelect={() => onSwitch(r)} />
-        ))}
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="m9 18 6-6-6-6"/>
+            </svg>
+            Switch workspace
+          </button>
+        </aside>
 
-        {missingRoles.length > 0 && (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuLabel className="text-xs font-medium uppercase tracking-wider text-slate-500">
-              Add a workspace
-            </DropdownMenuLabel>
-            {missingRoles.map((r) => (
-              <RoleAddRow key={r} role={r} onSelect={() => onAdd(r)} />
-            ))}
-          </>
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-};
-
-const RoleRow = ({
-  role,
-  active,
-  onSelect,
-}: {
-  role: AppRole;
-  active?: boolean;
-  onSelect: () => void;
-}) => {
-  const cfg = ROLE_CONFIG[role];
-  const Icon = cfg.icon;
-  return (
-    <DropdownMenuItem onClick={onSelect} className="gap-3 py-2.5">
-      <span
-        className={`grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br ${cfg.gradient} text-white`}
-      >
-        <Icon className="h-4 w-4" />
-      </span>
-      <div className="flex-1">
-        <div className="text-sm font-semibold text-slate-900">{cfg.label}</div>
-        <div className="text-xs text-slate-500">{cfg.short} workspace</div>
+        {/* Main content */}
+        <main style={{
+          flex: 1, padding: "28px 32px",
+          background: "var(--surface-2)",
+          overflowY: "auto",
+        }}>
+          <div style={{ maxWidth: 820, animation: "fadeUp 0.4s var(--ease-out) both" }}>
+            {children}
+          </div>
+        </main>
       </div>
-      {active && <Check className="h-4 w-4 text-emerald-600" />}
-    </DropdownMenuItem>
-  );
-};
-
-const RoleAddRow = ({
-  role,
-  onSelect,
-}: {
-  role: AppRole;
-  onSelect: () => void;
-}) => {
-  const cfg = ROLE_CONFIG[role];
-  const Icon = cfg.icon;
-  return (
-    <DropdownMenuItem onClick={onSelect} className="gap-3 py-2.5">
-      <span
-        className={`grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br ${cfg.gradient} text-white opacity-70`}
-      >
-        <Icon className="h-4 w-4" />
-      </span>
-      <div className="flex-1">
-        <div className="text-sm font-semibold text-slate-900">Become a {cfg.short}</div>
-        <div className="text-xs text-slate-500">Add this workspace to your account</div>
-      </div>
-      <Plus className="h-4 w-4 text-slate-400" />
-    </DropdownMenuItem>
+    </div>
   );
 };

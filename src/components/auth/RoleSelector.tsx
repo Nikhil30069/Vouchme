@@ -1,145 +1,186 @@
-import { motion } from "framer-motion";
-import { ArrowRight, LogOut, Plus, Sparkles } from "lucide-react";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
+import { ArrowRight, LogOut } from "lucide-react";
 import { useAuthStore, type AppRole } from "@/stores/authStore";
 import { ROLE_CONFIG, ROLE_ORDER } from "@/constants/appRoles";
+
+const LogoMark = () => (
+  <div style={{
+    width: 28, height: 28, borderRadius: 8,
+    background: "var(--ink)", display: "flex", alignItems: "center", justifyContent: "center",
+  }}>
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="white" stroke="none">
+      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+    </svg>
+  </div>
+);
+
+const roleGrads: Record<AppRole, string> = {
+  seeker: "linear-gradient(135deg, #1e3a8a, #2563eb)",
+  recruiter: "linear-gradient(135deg, #064e3b, #059669)",
+  referrer: "linear-gradient(135deg, #3b0764, #7c3aed)",
+};
+
+const roleIcons: Record<AppRole, React.ReactNode> = {
+  seeker: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+    </svg>
+  ),
+  recruiter: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
+    </svg>
+  ),
+  referrer: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/>
+    </svg>
+  ),
+};
 
 export const RoleSelector = () => {
   const { user, setActiveRole, signOut } = useAuthStore();
   if (!user) return null;
 
   const availableRoles = user.roles ?? [];
-  const missingRoles = ROLE_ORDER.filter((r) => !availableRoles.includes(r));
-
-  const handleSelect = (role: AppRole) => {
-    setActiveRole(role);
-  };
-
   const initials = (user.name || user.email || "?")
-    .split(/\s|@/)
-    .filter(Boolean)
+    .split(/\s|@/).filter(Boolean)
     .map((s) => s[0]?.toUpperCase() ?? "")
-    .slice(0, 2)
-    .join("");
+    .slice(0, 2).join("");
+
+  const handleSelect = (role: AppRole) => setActiveRole(role);
 
   return (
-    <div className="relative min-h-screen overflow-hidden auth-bg">
-      <div className="pointer-events-none absolute inset-0 bg-grid-soft bg-grid-cell opacity-30" />
-      <div className="pointer-events-none absolute -top-32 -left-32 h-96 w-96 rounded-full bg-brand-300/30 blur-3xl animate-blob" />
-      <div className="pointer-events-none absolute -bottom-32 -right-24 h-[28rem] w-[28rem] rounded-full bg-fuchsia-300/30 blur-3xl animate-blob [animation-delay:-6s]" />
-
-      <header className="relative z-10 mx-auto flex max-w-5xl items-center justify-between px-6 py-6">
-        <div className="flex items-center gap-2">
-          <div className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-brand-500 to-fuchsia-500 text-white shadow-soft">
-            <Sparkles className="h-5 w-5" />
-          </div>
-          <div className="text-lg font-display font-bold tracking-tight">
-            Hire<span className="gradient-text">Eco</span>
+    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "40px 24px", background: "var(--surface-2)" }}>
+      <div className="anim-scalein" style={{ width: "100%", maxWidth: 520, textAlign: "center" }}>
+        {/* Logo */}
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 20 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 17, fontWeight: 700, letterSpacing: "-0.04em", color: "var(--ink)" }}>
+            <LogoMark />
+            vouchme
           </div>
         </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => signOut()}
-          className="text-slate-500 hover:text-slate-900"
-        >
-          <LogOut className="mr-2 h-4 w-4" /> Sign out
-        </Button>
-      </header>
 
-      <main className="relative z-10 mx-auto flex max-w-3xl flex-col items-center px-6 pb-16 pt-4 text-center">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.96 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.4 }}
-          className="flex flex-col items-center"
-        >
-          <Avatar className="h-16 w-16 ring-4 ring-white shadow-soft">
-            <AvatarImage src={user.avatar_url ?? undefined} />
-            <AvatarFallback className="bg-gradient-to-br from-brand-500 to-fuchsia-500 text-white">
-              {initials || "U"}
-            </AvatarFallback>
-          </Avatar>
-          <h1 className="mt-5 font-display text-3xl font-extrabold tracking-tight text-slate-900 md:text-4xl">
-            Choose a workspace
-          </h1>
-          <p className="mt-2 text-slate-600">
-            Logged in as <span className="font-medium text-slate-900">{user.email}</span>.
-            Pick the lens you want to use right now.
-          </p>
-        </motion.div>
+        {/* Avatar */}
+        <div style={{
+          width: 52, height: 52, borderRadius: "50%",
+          background: "var(--ink)", color: "white",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          fontSize: 18, fontWeight: 700, margin: "0 auto 20px",
+        }}>
+          {initials || "U"}
+        </div>
 
-        <div className="mt-10 grid w-full grid-cols-1 gap-4 md:grid-cols-3">
+        <h2 style={{ fontSize: 26, fontWeight: 700, letterSpacing: "-0.04em", marginBottom: 6, color: "var(--ink)" }}>
+          Choose a workspace
+        </h2>
+        <p style={{ fontSize: 14, color: "var(--ink-3)", marginBottom: 32 }}>
+          Logged in as <strong style={{ color: "var(--ink)" }}>{user.email}</strong>
+        </p>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {availableRoles.map((role, i) => {
             const cfg = ROLE_CONFIG[role];
-            const Icon = cfg.icon;
             return (
-              <motion.button
+              <button
                 key={role}
-                type="button"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.1 + i * 0.06 }}
-                whileHover={{ y: -4 }}
-                whileTap={{ scale: 0.98 }}
                 onClick={() => handleSelect(role)}
-                className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-6 text-left shadow-sm transition-all hover:shadow-soft"
+                className="anim-fadeup"
+                style={{
+                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                  padding: "16px 20px",
+                  background: "var(--surface)",
+                  border: "1px solid var(--border-soft)",
+                  borderRadius: 14, cursor: "pointer", textAlign: "left",
+                  transition: "all 0.18s",
+                  animationDelay: `${0.1 + i * 0.07}s`,
+                  fontFamily: "inherit",
+                }}
+                onMouseEnter={(e) => {
+                  const roleColor = { seeker: "#2563eb", recruiter: "#059669", referrer: "#7c3aed" }[role];
+                  e.currentTarget.style.borderColor = roleColor;
+                  e.currentTarget.style.boxShadow = `0 0 0 2px ${roleColor}22`;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = "var(--border-soft)";
+                  e.currentTarget.style.boxShadow = "none";
+                }}
               >
-                <div className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${cfg.gradient}`} />
-                <div className="flex items-center justify-between">
-                  <div
-                    className={`grid h-12 w-12 place-items-center rounded-xl bg-gradient-to-br ${cfg.gradient} text-white shadow-sm`}
-                  >
-                    <Icon className="h-6 w-6" />
+                <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                  <div style={{
+                    width: 40, height: 40, borderRadius: 10,
+                    background: roleGrads[role],
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                  }}>
+                    {roleIcons[role]}
                   </div>
-                  <ArrowRight className="h-4 w-4 text-slate-400 transition-all group-hover:translate-x-1 group-hover:text-slate-700" />
+                  <div>
+                    <div style={{ fontSize: 15, fontWeight: 600, color: "var(--ink)", letterSpacing: "-0.02em" }}>{cfg.label}</div>
+                    <div style={{ fontSize: 13, color: "var(--ink-3)" }}>{cfg.description}</div>
+                  </div>
                 </div>
-                <div className="mt-5 font-display text-lg font-semibold text-slate-900">
-                  {cfg.label}
-                </div>
-                <p className="mt-1 text-sm text-slate-600">{cfg.description}</p>
-              </motion.button>
+                <ArrowRight size={16} color="var(--ink-3)" />
+              </button>
             );
           })}
         </div>
 
-        {missingRoles.length > 0 && (
-          <div className="mt-10 w-full">
-            <div className="mb-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">
-              Add another role
+        {/* Add missing roles */}
+        {ROLE_ORDER.filter((r) => !availableRoles.includes(r)).length > 0 && (
+          <div style={{ marginTop: 20 }}>
+            <div style={{
+              fontSize: 11, fontWeight: 600, textTransform: "uppercase",
+              letterSpacing: "0.05em", color: "var(--ink-4)", marginBottom: 10,
+            }}>
+              Add a role
             </div>
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-              {missingRoles.map((role) => {
-                const cfg = ROLE_CONFIG[role];
-                const Icon = cfg.icon;
-                return (
-                  <button
-                    key={role}
-                    onClick={async () => {
-                      await useAuthStore.getState().addRoleToUser(role);
-                    }}
-                    className="flex items-center justify-between rounded-2xl border border-dashed border-slate-300 bg-white/60 p-4 text-left text-slate-700 hover:border-slate-400 hover:bg-white"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div
-                        className={`grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br ${cfg.gradient} text-white opacity-80`}
-                      >
-                        <Icon className="h-4 w-4" />
-                      </div>
-                      <div>
-                        <div className="text-sm font-semibold">Become a {cfg.short}</div>
-                        <div className="text-xs text-slate-500">{cfg.description}</div>
-                      </div>
+            {ROLE_ORDER.filter((r) => !availableRoles.includes(r)).map((role) => {
+              const cfg = ROLE_CONFIG[role];
+              return (
+                <button
+                  key={role}
+                  onClick={() => useAuthStore.getState().addRoleToUser(role)}
+                  style={{
+                    display: "flex", alignItems: "center", justifyContent: "space-between",
+                    padding: "12px 16px", width: "100%",
+                    background: "transparent",
+                    border: "1px dashed var(--border-med)",
+                    borderRadius: 12, cursor: "pointer", textAlign: "left",
+                    marginBottom: 8, fontFamily: "inherit",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <div style={{
+                      width: 34, height: 34, borderRadius: 8,
+                      background: roleGrads[role], opacity: 0.7,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                    }}>
+                      {roleIcons[role]}
                     </div>
-                    <Plus className="h-4 w-4 text-slate-400" />
-                  </button>
-                );
-              })}
-            </div>
+                    <div style={{ fontSize: 14, fontWeight: 500, color: "var(--ink-2)" }}>
+                      Become a {cfg.short}
+                    </div>
+                  </div>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--ink-4)" strokeWidth="1.8" strokeLinecap="round">
+                    <path d="M5 12h14"/><path d="M12 5v14"/>
+                  </svg>
+                </button>
+              );
+            })}
           </div>
         )}
-      </main>
+
+        <button
+          onClick={() => signOut()}
+          style={{
+            display: "flex", alignItems: "center", gap: 6,
+            background: "none", border: "none", cursor: "pointer",
+            fontSize: 13, color: "var(--ink-3)", marginTop: 20,
+            fontFamily: "inherit", margin: "20px auto 0",
+          }}
+        >
+          <LogOut size={13} /> Sign out
+        </button>
+      </div>
     </div>
   );
 };

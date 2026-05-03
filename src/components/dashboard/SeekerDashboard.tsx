@@ -1,32 +1,18 @@
 import { useCallback, useEffect, useState } from "react";
-import { motion } from "framer-motion";
-import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import {
-  Briefcase,
-  Clock,
-  Plus,
-  Send,
-  Star,
-  Users,
-} from "lucide-react";
+import { Briefcase, Clock, Plus, Send, Star } from "lucide-react";
 import { User } from "@/stores/authStore";
 import { useReferralStore } from "@/stores/referralStore";
 import { JobRequirementForm } from "./JobRequirementForm";
 import { StrengthScore } from "./StrengthScore";
 import { ReferrerSelectionPopup } from "./ReferrerSelectionPopup";
+import { TestSuite } from "./TestSuite";
 import { supabase } from "@/integrations/supabase/client";
 import { JOB_ROLES } from "@/constants/roles";
 
 interface SeekerDashboardProps {
   user: User;
+  activeTab: string;
+  onTabChange: (tab: string) => void;
 }
 
 type SeekerJob = {
@@ -39,329 +25,261 @@ type SeekerJob = {
   createdAt: string | null;
 };
 
-const roleLabel = (value: string) =>
-  JOB_ROLES.find((r) => r.value === value)?.label ?? value;
-
-export const SeekerDashboard = ({ user }: SeekerDashboardProps) => {
-  const [showForm, setShowForm] = useState(false);
-  const [showReferrerPopup, setShowReferrerPopup] = useState(false);
-  const [selectedJob, setSelectedJob] = useState<{
-    id: string;
-    role: string;
-    experience: number;
-  } | null>(null);
-  const [allJobs, setAllJobs] = useState<SeekerJob[]>([]);
-  const { fetchReferralRequests, referralRequests } = useReferralStore();
-
-  useEffect(() => {
-    fetchReferralRequests(user.id);
-  }, [user.id, fetchReferralRequests]);
-
-  const fetchJobs = useCallback(async () => {
-    const { data, error } = await supabase
-      .from("job_requirements")
-      .select("*")
-      .eq("userId", user.id)
-      .eq("type", "seeker");
-    if (!error && data) setAllJobs(data as unknown as SeekerJob[]);
-  }, [user.id]);
-
-  useEffect(() => {
-    fetchJobs();
-  }, [fetchJobs]);
-
-  const myReferralRequests = referralRequests.filter(
-    (req) => req.seeker_id === user.id
-  );
-  const pendingRequests = myReferralRequests.filter(
-    (req) => req.status === "pending"
-  ).length;
-  const scoredRequests = myReferralRequests.filter(
-    (req) => req.status === "scored"
-  ).length;
-  const totalRequests = pendingRequests + scoredRequests;
-
-  if (showForm) {
-    return (
-      <JobRequirementForm
-        user={user}
-        type="seeker"
-        onClose={() => {
-          setShowForm(false);
-          fetchJobs();
-        }}
-      />
-    );
-  }
-
-  return (
-    <div className="space-y-8">
-      <motion.section
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-600 p-8 text-white shadow-soft"
-      >
-        <div className="absolute -right-12 -top-12 h-48 w-48 rounded-full bg-white/10 blur-3xl" />
-        <div className="absolute -bottom-16 -left-16 h-56 w-56 rounded-full bg-fuchsia-300/20 blur-3xl" />
-        <div className="relative">
-          <div className="text-xs font-medium uppercase tracking-wider text-white/70">
-            Seeker workspace
-          </div>
-          <h1 className="mt-1 font-display text-3xl font-extrabold tracking-tight md:text-4xl">
-            Welcome back, {user.name?.split(" ")[0] || "there"}.
-          </h1>
-          <p className="mt-2 max-w-xl text-white/85">
-            Track your applications, build your karma score with peer reviews, and stay
-            visible to top recruiters.
-          </p>
-          <div className="mt-6 flex flex-wrap gap-3">
-            <Button
-              onClick={() => setShowForm(true)}
-              className="h-11 rounded-xl bg-white px-5 text-blue-700 hover:bg-blue-50"
-            >
-              <Plus className="mr-2 h-4 w-4" /> Post a requirement
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => {
-                if (allJobs[0]) {
-                  setSelectedJob({
-                    id: allJobs[0].id,
-                    role: allJobs[0].role,
-                    experience: allJobs[0].yearsOfExperience,
-                  });
-                  setShowReferrerPopup(true);
-                }
-              }}
-              disabled={allJobs.length === 0}
-              className="h-11 rounded-xl border-white/40 bg-white/10 text-white hover:bg-white/20"
-            >
-              <Send className="mr-2 h-4 w-4" /> Request a review
-            </Button>
-          </div>
-        </div>
-      </motion.section>
-
-      <StrengthScore user={user} />
-
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-        <StatCard
-          icon={Briefcase}
-          label="Active requirements"
-          value={allJobs.length}
-          tone="blue"
-        />
-        <StatCard
-          icon={Send}
-          label="Referral requests"
-          value={totalRequests}
-          tone="emerald"
-        />
-        <StatCard
-          icon={Clock}
-          label="Pending reviews"
-          value={pendingRequests}
-          tone="amber"
-        />
-        <StatCard
-          icon={Star}
-          label="Reviews completed"
-          value={scoredRequests}
-          tone="purple"
-        />
-      </div>
-
-      {totalRequests > 0 && (
-        <Card className="rounded-2xl border-slate-200/70 bg-white shadow-sm">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="h-5 w-5 text-brand-600" />
-              Referral requests
-            </CardTitle>
-            <CardDescription>
-              Track requests you've sent and their current status.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {myReferralRequests.map((request) => (
-                <div
-                  key={request.id}
-                  className="flex flex-col gap-3 rounded-2xl border border-slate-200/70 bg-slate-50/50 p-4 transition hover:bg-white sm:flex-row sm:items-center sm:justify-between"
-                >
-                  <div>
-                    <div className="text-sm font-semibold text-slate-900">
-                      {roleLabel(request.job_role)}
-                    </div>
-                    <div className="text-xs text-slate-500">
-                      Sent on{" "}
-                      {new Date(request.created_at ?? Date.now()).toLocaleDateString()} •{" "}
-                      {request.seeker_experience_years} years exp
-                    </div>
-                  </div>
-                  <Badge
-                    className={
-                      request.status === "scored"
-                        ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-100"
-                        : "bg-amber-100 text-amber-700 hover:bg-amber-100"
-                    }
-                  >
-                    {request.status === "scored" ? "Reviewed" : "Pending review"}
-                  </Badge>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      <Card className="rounded-2xl border-slate-200/70 bg-white shadow-sm">
-        <CardHeader>
-          <CardTitle>Your job requirements</CardTitle>
-          <CardDescription>
-            Each requirement is a snapshot of what you're looking for and your current
-            profile.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {allJobs.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-slate-300 p-10 text-center">
-              <Briefcase className="mx-auto h-10 w-10 text-slate-400" />
-              <h3 className="mt-3 font-display text-lg font-semibold text-slate-900">
-                No requirements yet
-              </h3>
-              <p className="mt-1 text-sm text-slate-500">
-                Post your first requirement to start collecting karma scores.
-              </p>
-              <Button
-                onClick={() => setShowForm(true)}
-                className="mt-4 rounded-xl bg-slate-900 text-white hover:bg-slate-800"
-              >
-                <Plus className="mr-2 h-4 w-4" /> Post requirement
-              </Button>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {allJobs.map((job) => (
-                <motion.div
-                  key={job.id}
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="rounded-2xl border border-slate-200/70 bg-white p-4 transition hover:shadow-sm"
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <div className="font-semibold text-slate-900">
-                        {roleLabel(job.role)}
-                      </div>
-                      <div className="text-xs text-slate-500">
-                        Posted{" "}
-                        {job.createdAt
-                          ? new Date(job.createdAt).toLocaleDateString()
-                          : "recently"}
-                      </div>
-                    </div>
-                    <Badge variant="outline" className="border-slate-200">
-                      {job.yearsOfExperience} years exp
-                    </Badge>
-                  </div>
-                  <div className="mt-4 grid grid-cols-2 gap-3 text-sm text-slate-600 md:grid-cols-3">
-                    <Stat label="Current CTC" value={fmtCurrency(job.currentCtc)} />
-                    <Stat label="Expected CTC" value={fmtCurrency(job.expectedCtc)} />
-                    <Stat
-                      label="Notice period"
-                      value={job.noticePeriod ? `${job.noticePeriod} days` : "—"}
-                    />
-                  </div>
-                  <div className="mt-4 flex justify-end">
-                    <Button
-                      onClick={() => {
-                        setSelectedJob({
-                          id: job.id,
-                          role: job.role,
-                          experience: job.yearsOfExperience,
-                        });
-                        setShowReferrerPopup(true);
-                      }}
-                      size="sm"
-                      className="rounded-lg bg-slate-900 text-white hover:bg-slate-800"
-                    >
-                      <Send className="mr-2 h-4 w-4" /> Request referral
-                    </Button>
-                  </div>
-                </motion.div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {showReferrerPopup && selectedJob && (
-        <ReferrerSelectionPopup
-          isOpen={showReferrerPopup}
-          onClose={() => {
-            setShowReferrerPopup(false);
-            setSelectedJob(null);
-          }}
-          jobRequirementId={selectedJob.id}
-          jobRole={selectedJob.role}
-          jobExperience={selectedJob.experience}
-        />
-      )}
-    </div>
-  );
-};
-
-const Stat = ({ label, value }: { label: string; value: string }) => (
-  <div>
-    <div className="text-xs uppercase tracking-wide text-slate-400">{label}</div>
-    <div className="text-sm font-semibold text-slate-900">{value}</div>
-  </div>
-);
+const roleLabel = (value: string) => JOB_ROLES.find((r) => r.value === value)?.label ?? value;
 
 const fmtCurrency = (n?: number | null) =>
   typeof n === "number" && Number.isFinite(n) ? `₹${n.toLocaleString()}` : "—";
 
-const toneClasses: Record<string, { bg: string; text: string; ring: string }> = {
-  blue: { bg: "bg-blue-50", text: "text-blue-600", ring: "ring-blue-100" },
-  emerald: { bg: "bg-emerald-50", text: "text-emerald-600", ring: "ring-emerald-100" },
-  amber: { bg: "bg-amber-50", text: "text-amber-600", ring: "ring-amber-100" },
-  purple: { bg: "bg-purple-50", text: "text-purple-600", ring: "ring-purple-100" },
-};
+const statColors = ["#2563eb", "#059669", "#d97706", "#7c3aed"];
 
-const StatCard = ({
-  icon: Icon,
-  label,
-  value,
-  tone,
-}: {
-  icon: typeof Briefcase;
-  label: string;
-  value: number;
-  tone: keyof typeof toneClasses;
-}) => {
-  const t = toneClasses[tone];
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-sm"
-    >
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="text-xs font-medium uppercase tracking-wider text-slate-500">
-            {label}
-          </div>
-          <div className="mt-1 font-display text-2xl font-bold text-slate-900">
-            {value}
-          </div>
+export const SeekerDashboard = ({ user, activeTab, onTabChange }: SeekerDashboardProps) => {
+  const [showForm, setShowForm] = useState(false);
+  const [showReferrerPopup, setShowReferrerPopup] = useState(false);
+  const [selectedJob, setSelectedJob] = useState<{ id: string; role: string; experience: number } | null>(null);
+  const [allJobs, setAllJobs] = useState<SeekerJob[]>([]);
+  const { fetchReferralRequests, referralRequests } = useReferralStore();
+
+  useEffect(() => { fetchReferralRequests(user.id); }, [user.id, fetchReferralRequests]);
+
+  const fetchJobs = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("job_requirements").select("*")
+      .eq("userId", user.id).eq("type", "seeker");
+    if (!error && data) setAllJobs(data as unknown as SeekerJob[]);
+  }, [user.id]);
+
+  useEffect(() => { fetchJobs(); }, [fetchJobs]);
+
+  const myReferralRequests = referralRequests.filter((req) => req.seeker_id === user.id);
+  const pendingRequests = myReferralRequests.filter((req) => req.status === "pending").length;
+  const scoredRequests = myReferralRequests.filter((req) => req.status === "scored").length;
+  const totalRequests = pendingRequests + scoredRequests;
+
+  if (showForm) {
+    return (
+      <div style={{ animation: "fadeUp 0.4s var(--ease-out) both" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
+          <h2 style={{ fontSize: 20, fontWeight: 700, letterSpacing: "-0.04em", color: "var(--ink)" }}>Post a Requirement</h2>
+          <button onClick={() => setShowForm(false)} style={ghostBtnStyle}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            Close
+          </button>
         </div>
-        <div
-          className={`grid h-10 w-10 place-items-center rounded-xl ${t.bg} ${t.text} ring-4 ${t.ring}`}
-        >
-          <Icon className="h-5 w-5" />
-        </div>
+        <JobRequirementForm user={user} type="seeker" onClose={() => { setShowForm(false); fetchJobs(); }} />
       </div>
-    </motion.div>
+    );
+  }
+
+  // Tests tab
+  if (activeTab === "tests") {
+    return <TestSuite userId={user.id} />;
+  }
+
+  // Overview tab
+  if (activeTab === "overview") {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+        {/* Hero banner */}
+        <HeroBanner
+          role="seeker"
+          name={user.name?.split(" ")[0] || "there"}
+          subtitle="Track your applications, build karma with peer reviews, and stay visible to top recruiters."
+          action={<button onClick={() => setShowForm(true)} style={heroBtnStyle}><Plus size={16} /> Post a requirement</button>}
+        />
+
+        {/* Stats */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 }}>
+          {[
+            { label: "Requirements", value: allJobs.length, icon: Briefcase, color: statColors[0] },
+            { label: "Referral requests", value: totalRequests, icon: Send, color: statColors[1] },
+            { label: "Pending reviews", value: pendingRequests, icon: Clock, color: statColors[2] },
+            { label: "Completed", value: scoredRequests, icon: Star, color: statColors[3] },
+          ].map((s, i) => (
+            <StatCard key={i} {...s} delay={i * 0.08} />
+          ))}
+        </div>
+
+        {/* Strength Score */}
+        <StrengthScore user={user} />
+      </div>
+    );
+  }
+
+  // Jobs tab
+  if (activeTab === "jobs") {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <h2 style={{ fontSize: 18, fontWeight: 700, letterSpacing: "-0.03em", color: "var(--ink)" }}>My Requirements</h2>
+          <button onClick={() => setShowForm(true)} style={primaryBtnStyle}><Plus size={14} /> Post requirement</button>
+        </div>
+        {allJobs.length === 0 ? (
+          <EmptyState icon={<Briefcase size={40} color="var(--ink-4)" />} title="No requirements yet" body="Post your first requirement to start collecting karma scores." action={<button onClick={() => setShowForm(true)} style={primaryBtnStyle}><Plus size={14} /> Post requirement</button>} />
+        ) : allJobs.map((job, i) => (
+          <div key={job.id} className="surface-card" style={{ padding: 20, animationDelay: `${i * 0.06}s` }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 600, color: "var(--ink)", letterSpacing: "-0.02em" }}>{roleLabel(job.role)}</div>
+                <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 3 }}>
+                  Posted {job.createdAt ? new Date(job.createdAt).toLocaleDateString() : "recently"}
+                </div>
+              </div>
+              <span style={badgeStyle}>{job.yearsOfExperience} yrs exp</span>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12, marginBottom: 14 }}>
+              {[["Current CTC", fmtCurrency(job.currentCtc)], ["Expected CTC", fmtCurrency(job.expectedCtc)], ["Notice Period", job.noticePeriod ? `${job.noticePeriod} days` : "—"]].map(([l, v]) => (
+                <div key={l}>
+                  <div style={{ fontSize: 11, color: "var(--ink-4)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 2 }}>{l}</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: "var(--ink)" }}>{v}</div>
+                </div>
+              ))}
+            </div>
+            <button
+              onClick={() => { setSelectedJob({ id: job.id, role: job.role, experience: job.yearsOfExperience }); setShowReferrerPopup(true); }}
+              style={secondaryBtnStyle}
+            >
+              <Send size={12} /> Request referral
+            </button>
+          </div>
+        ))}
+        {showReferrerPopup && selectedJob && (
+          <ReferrerSelectionPopup
+            isOpen={showReferrerPopup}
+            onClose={() => { setShowReferrerPopup(false); setSelectedJob(null); }}
+            jobRequirementId={selectedJob.id}
+            jobRole={selectedJob.role}
+            jobExperience={selectedJob.experience}
+          />
+        )}
+      </div>
+    );
+  }
+
+  // Requests tab
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <h2 style={{ fontSize: 18, fontWeight: 700, letterSpacing: "-0.03em", color: "var(--ink)" }}>Referral Requests</h2>
+      {myReferralRequests.length === 0 ? (
+        <EmptyState icon={<Send size={40} color="var(--ink-4)" />} title="No requests yet" body="Post a requirement and request referrals to see them here." />
+      ) : myReferralRequests.map((r, i) => (
+        <div key={r.id} className="surface-card" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 18px", animationDelay: `${i * 0.07}s` }}>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)" }}>{roleLabel(r.job_role)}</div>
+            <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 3 }}>
+              Sent {new Date(r.created_at ?? Date.now()).toLocaleDateString()} · {r.seeker_experience_years} years exp
+            </div>
+          </div>
+          <StatusBadge status={r.status} />
+        </div>
+      ))}
+    </div>
   );
 };
+
+/* ── Shared sub-components ── */
+
+const HeroBanner = ({ role, name, subtitle, action }: { role: "seeker" | "recruiter" | "referrer"; name: string; subtitle: string; action?: React.ReactNode }) => {
+  const grads = {
+    seeker: "linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%)",
+    recruiter: "linear-gradient(135deg, #064e3b 0%, #059669 100%)",
+    referrer: "linear-gradient(135deg, #3b0764 0%, #7c3aed 100%)",
+  };
+  const labels = { seeker: "Seeker workspace", recruiter: "Recruiter workspace", referrer: "Referrer workspace" };
+  return (
+    <div style={{
+      borderRadius: 20, padding: "28px 32px", color: "white",
+      position: "relative", overflow: "hidden",
+      background: grads[role],
+    }}>
+      <div style={{ position: "absolute", inset: 0, opacity: 0.04, backgroundImage: "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")", backgroundSize: "cover" }} />
+      <div style={{ position: "relative" }}>
+        <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", opacity: 0.65, marginBottom: 6 }}>{labels[role]}</div>
+        <h2 style={{ fontSize: 26, fontWeight: 700, letterSpacing: "-0.04em", marginBottom: 6 }}>Welcome back, {name}.</h2>
+        <p style={{ fontSize: 14, opacity: 0.8, marginBottom: 20, maxWidth: 400, lineHeight: 1.6 }}>{subtitle}</p>
+        {action}
+      </div>
+    </div>
+  );
+};
+
+const StatCard = ({ icon: Icon, label, value, color, delay = 0 }: { icon: any; label: string; value: number; color: string; delay?: number }) => (
+  <div className="surface-card" style={{ padding: "18px 20px", animationDelay: `${delay}s` }}>
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+      <div style={{ fontSize: 12, color: "var(--ink-3)", fontWeight: 500, letterSpacing: "0.02em", textTransform: "uppercase" }}>{label}</div>
+      <div style={{ width: 30, height: 30, borderRadius: 8, background: color + "15", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <Icon size={14} color={color} />
+      </div>
+    </div>
+    <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: "-0.04em", color: "var(--ink)", lineHeight: 1 }}>{value}</div>
+  </div>
+);
+
+const StatusBadge = ({ status }: { status: string }) => {
+  const scored = status === "scored";
+  return (
+    <span style={{
+      display: "inline-flex", alignItems: "center", gap: 5,
+      fontSize: 11, fontWeight: 600, letterSpacing: "0.02em", textTransform: "uppercase",
+      padding: "3px 9px", borderRadius: 999,
+      background: scored ? "#ecfdf5" : "#fffbeb",
+      color: scored ? "#059669" : "#d97706",
+      border: `1px solid ${scored ? "#a7f3d0" : "#fde68a"}`,
+    }}>
+      {scored ? (
+        <><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M20 6 9 17l-5-5"/></svg> Reviewed</>
+      ) : (
+        <><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> Pending</>
+      )}
+    </span>
+  );
+};
+
+const EmptyState = ({ icon, title, body, action }: { icon: React.ReactNode; title: string; body: string; action?: React.ReactNode }) => (
+  <div className="surface-card" style={{ textAlign: "center", padding: "48px 24px" }}>
+    <div style={{ opacity: 0.2, display: "flex", justifyContent: "center", marginBottom: 14 }}>{icon}</div>
+    <div style={{ fontSize: 16, fontWeight: 600, color: "var(--ink)", marginBottom: 6 }}>{title}</div>
+    <div style={{ fontSize: 14, color: "var(--ink-3)", marginBottom: action ? 16 : 0 }}>{body}</div>
+    {action}
+  </div>
+);
+
+/* Shared button styles */
+export const heroBtnStyle: React.CSSProperties = {
+  display: "inline-flex", alignItems: "center", gap: 8,
+  background: "white", color: "#1e3a8a",
+  border: "none", cursor: "pointer",
+  fontSize: 15, fontWeight: 600,
+  padding: "0 22px", height: 46, borderRadius: 14,
+  fontFamily: "inherit",
+};
+export const primaryBtnStyle: React.CSSProperties = {
+  display: "inline-flex", alignItems: "center", gap: 6,
+  background: "var(--ink)", color: "white", border: "none",
+  cursor: "pointer", fontSize: 13, fontWeight: 500,
+  padding: "0 14px", height: 32, borderRadius: 8,
+  fontFamily: "inherit",
+};
+export const secondaryBtnStyle: React.CSSProperties = {
+  display: "inline-flex", alignItems: "center", gap: 6,
+  background: "var(--surface-2)", color: "var(--ink)",
+  border: "1px solid var(--border-med)", cursor: "pointer",
+  fontSize: 13, fontWeight: 500,
+  padding: "0 12px", height: 30, borderRadius: 8,
+  fontFamily: "inherit",
+};
+export const ghostBtnStyle: React.CSSProperties = {
+  display: "inline-flex", alignItems: "center", gap: 6,
+  background: "transparent", color: "var(--ink-3)", border: "none",
+  cursor: "pointer", fontSize: 13, fontWeight: 500,
+  padding: "0 10px", height: 30, borderRadius: 8,
+  fontFamily: "inherit",
+};
+export const badgeStyle: React.CSSProperties = {
+  display: "inline-flex", alignItems: "center",
+  fontSize: 11, fontWeight: 600, letterSpacing: "0.02em", textTransform: "uppercase",
+  padding: "3px 9px", borderRadius: 999,
+  background: "var(--surface-2)", color: "var(--ink-2)",
+  border: "1px solid var(--border-med)",
+};
+
+export { HeroBanner, StatCard, StatusBadge, EmptyState };

@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800;900&family=Geist+Mono:wght@400;500&display=swap");
 
 @tailwind base;
 @tailwind components;
@@ -6,66 +6,59 @@
 
 @layer base {
   :root {
-    --background: 220 33% 99%;
-    --foreground: 222 47% 11%;
+    /* vouchme design tokens */
+    --ink: #0e0e11;
+    --ink-2: #3a3a46;
+    --ink-3: #7a7a8c;
+    --ink-4: #b4b4c2;
+    --surface: #ffffff;
+    --surface-2: #f5f5f8;
+    --surface-3: #ececf2;
+    --border-soft: rgba(14, 14, 17, 0.08);
+    --border-med: rgba(14, 14, 17, 0.13);
 
+    --seeker: #2563eb;
+    --seeker-light: #eff4ff;
+    --seeker-mid: #bfcfff;
+    --recruiter: #059669;
+    --recruiter-light: #ecfdf5;
+    --recruiter-mid: #a7f3d0;
+    --referrer: #7c3aed;
+    --referrer-light: #f5f3ff;
+    --referrer-mid: #ddd6fe;
+
+    --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+    --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+    /* shadcn tokens — mapped to ink palette */
+    --background: 0 0% 100%;
+    --foreground: 240 6% 7%;
     --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
-
+    --card-foreground: 240 6% 7%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
-
-    --primary: 235 86% 60%;
-    --primary-foreground: 210 40% 98%;
-
-    --secondary: 222 47% 96%;
-    --secondary-foreground: 222 47% 14%;
-
-    --muted: 220 14% 96%;
-    --muted-foreground: 220 9% 46%;
-
-    --accent: 235 100% 96%;
-    --accent-foreground: 235 86% 30%;
-
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 0 0% 100%;
-
-    --border: 220 13% 91%;
-    --input: 220 13% 91%;
-    --ring: 235 86% 60%;
-
-    --radius: 0.85rem;
-
-    --sidebar-background: 220 33% 99%;
+    --popover-foreground: 240 6% 7%;
+    --primary: 240 6% 7%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 240 5% 96%;
+    --secondary-foreground: 240 6% 7%;
+    --muted: 240 5% 96%;
+    --muted-foreground: 240 4% 47%;
+    --accent: 240 5% 96%;
+    --accent-foreground: 240 6% 7%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 5% 91%;
+    --input: 240 5% 91%;
+    --ring: 240 6% 7%;
+    --radius: 0.75rem;
+    --sidebar-background: 0 0% 100%;
     --sidebar-foreground: 240 5.3% 26.1%;
     --sidebar-primary: 240 5.9% 10%;
     --sidebar-primary-foreground: 0 0% 98%;
     --sidebar-accent: 240 4.8% 95.9%;
     --sidebar-accent-foreground: 240 5.9% 10%;
-    --sidebar-border: 220 13% 91%;
+    --sidebar-border: 240 5% 91%;
     --sidebar-ring: 217.2 91.2% 59.8%;
-  }
-
-  .dark {
-    --background: 224 71% 4%;
-    --foreground: 213 31% 91%;
-    --card: 224 71% 6%;
-    --card-foreground: 213 31% 91%;
-    --popover: 224 71% 6%;
-    --popover-foreground: 213 31% 91%;
-    --primary: 235 86% 65%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 222 47% 14%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 223 47% 11%;
-    --muted-foreground: 215 20% 65%;
-    --accent: 235 60% 20%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 63% 31%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 215 27% 17%;
-    --input: 215 27% 17%;
-    --ring: 235 86% 65%;
   }
 }
 
@@ -74,80 +67,126 @@
     @apply border-border;
   }
 
-  html,
-  body,
-  #root {
+  html, body, #root {
     @apply min-h-screen;
+    font-family: 'Geist', 'Helvetica Neue', Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
   }
 
   body {
-    @apply bg-background text-foreground font-sans antialiased;
-    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    background: var(--surface);
+    color: var(--ink);
   }
 
-  h1,
-  h2,
-  h3,
-  h4 {
-    @apply font-display tracking-tight;
-  }
-}
-
-@layer components {
-  .glass {
-    @apply bg-white/70 backdrop-blur-xl border border-white/40 shadow-soft;
+  ::selection {
+    background: var(--ink);
+    color: white;
   }
 
-  .glass-dark {
-    @apply bg-slate-900/70 backdrop-blur-xl border border-white/10;
-  }
-
-  .gradient-text {
-    @apply bg-clip-text text-transparent bg-gradient-to-r from-brand-500 via-fuchsia-500 to-rose-500;
-  }
-
-  .surface-card {
-    @apply bg-white rounded-2xl border border-slate-200/70 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_-8px_rgba(15,23,42,0.08)];
-  }
-
-  .role-pill {
-    @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border;
-  }
-
-  .role-pill-seeker {
-    @apply role-pill bg-blue-50 text-blue-700 border-blue-100;
-  }
-
-  .role-pill-recruiter {
-    @apply role-pill bg-emerald-50 text-emerald-700 border-emerald-100;
-  }
-
-  .role-pill-referrer {
-    @apply role-pill bg-purple-50 text-purple-700 border-purple-100;
-  }
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--surface-3); border-radius: 999px; }
 }
 
 @layer utilities {
+  /* Animations */
+  .anim-fadeup {
+    animation: fadeUp 0.5s var(--ease-out) both;
+  }
+  .anim-fadein {
+    animation: fadeIn 0.4s ease both;
+  }
+  .anim-scalein {
+    animation: scaleIn 0.4s var(--ease-out) both;
+  }
+  .anim-slidein-right {
+    animation: slideInRight 0.45s var(--ease-out) both;
+  }
+
+  /* Role pills */
+  .role-pill {
+    @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+  }
+  .role-pill-seeker {
+    background: var(--seeker-light);
+    color: var(--seeker);
+    border-color: var(--seeker-mid);
+  }
+  .role-pill-recruiter {
+    background: var(--recruiter-light);
+    color: var(--recruiter);
+    border-color: var(--recruiter-mid);
+  }
+  .role-pill-referrer {
+    background: var(--referrer-light);
+    color: var(--referrer);
+    border-color: var(--referrer-mid);
+  }
+
+  /* Surface card */
+  .surface-card {
+    background: var(--surface);
+    border-radius: 18px;
+    border: 1px solid var(--border-soft);
+    box-shadow: 0 2px 8px rgba(14,14,17,0.07), 0 1px 2px rgba(14,14,17,0.04);
+  }
+
+  /* Auth background — clean white */
   .auth-bg {
-    background:
-      radial-gradient(1200px 600px at 10% -10%, rgba(87, 100, 244, 0.18), transparent 60%),
-      radial-gradient(1000px 500px at 110% 10%, rgba(236, 72, 153, 0.15), transparent 60%),
-      radial-gradient(800px 500px at 50% 110%, rgba(16, 185, 129, 0.12), transparent 60%),
-      linear-gradient(180deg, #fafbff 0%, #ffffff 100%);
+    background: var(--surface);
   }
 
+  /* Dashboard background */
   .dashboard-bg {
-    background:
-      radial-gradient(900px 400px at 100% -10%, rgba(87, 100, 244, 0.08), transparent 60%),
-      radial-gradient(900px 400px at -10% 110%, rgba(236, 72, 153, 0.06), transparent 60%),
-      #f7f8fc;
+    background: var(--surface-2);
   }
 
-  .scrollbar-thin::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+  /* Gradient text (for logo etc) */
+  .gradient-text {
+    opacity: 0.45;
   }
-  .scrollbar-thin::-webkit-scrollbar-thumb {
-    @apply bg-slate-300 rounded-full;
+
+  /* Shimmer skeleton */
+  .skeleton {
+    background: linear-gradient(90deg, var(--surface-2) 25%, var(--surface-3) 50%, var(--surface-2) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+    border-radius: 8px;
   }
+
+  /* scrollbar thin */
+  .scrollbar-thin::-webkit-scrollbar { width: 5px; height: 5px; }
+  .scrollbar-thin::-webkit-scrollbar-thumb { background: var(--surface-3); border-radius: 999px; }
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(18px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.94); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(24px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes barGrow {
+  from { transform: scaleY(0); }
+  to   { transform: scaleY(1); }
+}
+@keyframes shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+@keyframes blob {
+  0%, 100% { transform: translate(0,0) scale(1); }
+  33%       { transform: translate(30px,-50px) scale(1.1); }
+  66%       { transform: translate(-20px,20px) scale(0.95); }
 }
