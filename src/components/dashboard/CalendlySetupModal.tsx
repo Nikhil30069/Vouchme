@@ -17,7 +17,7 @@ export const CalendlySetupModal = ({ user, onComplete }: CalendlySetupModalProps
   const [saved, setSaved] = useState(false);
   const [showSteps, setShowSteps] = useState(false);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const trimmed = url.trim();
     if (!trimmed) {
       toast.error("Please enter your Calendly URL before saving.");
@@ -27,14 +27,15 @@ export const CalendlySetupModal = ({ user, onComplete }: CalendlySetupModalProps
       toast.error("URL must start with https://calendly.com/");
       return;
     }
-    // Optimistically complete — fire the DB write in the background.
-    // The free-tier Supabase project may take 20-30s to wake from pause on
-    // the first write; we don't want to block the user on that.
     setSaved(true);
-    saveCalendlyUrl(user.id, trimmed).catch(() => {
-      // Silent — if this fails the modal will reappear on next login
-      // once the project is fully awake.
-    });
+    try {
+      await saveCalendlyUrl(user.id, trimmed);
+    } catch (err: any) {
+      console.error("[CalendlySetupModal] save failed:", err);
+      toast.error(err?.message ?? "Failed to save — please try again.");
+      setSaved(false);
+      return;
+    }
     setTimeout(() => onComplete(trimmed), 600);
   };
 
