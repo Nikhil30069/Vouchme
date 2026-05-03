@@ -49,10 +49,12 @@ export const ReferrerDashboard = ({ user, activeTab }: ReferrerDashboardProps) =
     setSavingCalendly(true);
     try {
       await saveCalendlyUrl(user.id, calendlyUrl.trim());
+      user.calendly_url = calendlyUrl.trim();
       setSavedCalendly(true);
       setTimeout(() => setSavedCalendly(false), 2000);
-    } catch {
-      toast.error("Failed to save Calendly link");
+      toast.success("Calendly link saved!");
+    } catch (err: any) {
+      toast.error(err?.message ?? "Failed to save Calendly link — ensure the database column exists");
     } finally {
       setSavingCalendly(false);
     }
