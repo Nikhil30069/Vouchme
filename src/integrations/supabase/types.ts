@@ -24,6 +24,7 @@ export type Database = {
           organizations: string[] | null;
           current_organization: string | null;
           onboarded: boolean;
+          calendly_url: string | null;
           created_at: string | null;
           updated_at: string | null;
         };
@@ -39,6 +40,7 @@ export type Database = {
           organizations?: string[] | null;
           current_organization?: string | null;
           onboarded?: boolean;
+          calendly_url?: string | null;
           created_at?: string | null;
           updated_at?: string | null;
         };

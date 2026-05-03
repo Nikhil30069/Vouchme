@@ -680,3 +680,6 @@ ALTER TABLE public.referral_requests
   ADD CONSTRAINT referral_requests_status_check
   CHECK (status IN ('pending', 'scheduled', 'completed', 'scored'));
 GRANT EXECUTE ON FUNCTION public.get_leaderboard(INTEGER) TO authenticated;
+
+-- Add Calendly URL to referrer profiles
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS calendly_url TEXT;

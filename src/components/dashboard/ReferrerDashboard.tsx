@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Award, CalendarCheck, CheckCircle, Clock, FileText, Plus, Star, Trash2, Users, Video } from "lucide-react";
+import { Award, CalendarCheck, CheckCircle, Clock, FileText, Star } from "lucide-react";
 import { User } from "@/stores/authStore";
 import { useReferralStore } from "@/stores/referralStore";
 import { JOB_ROLES } from "@/constants/roles";
@@ -16,80 +16,47 @@ interface ReferrerDashboardProps {
 
 const roleLabel = (value: string) => JOB_ROLES.find((r) => r.value === value)?.label ?? value;
 
-const fmtSlotLabel = (isoString: string, durationMins: number) => {
-  const d = new Date(isoString);
-  const day = d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
-  const time = d.toLocaleTimeString("en-GB", { hour: "numeric", minute: "2-digit", hour12: true }).toUpperCase();
-  return `${day} · ${time} · ${durationMins} min`;
-};
-
 export const ReferrerDashboard = ({ user, activeTab }: ReferrerDashboardProps) => {
   const {
     fetchReferralRequests, fetchScoringParameters, createScore,
-    referralRequests, scoringParameters,
-    fetchReferrerSlots, createSlot, deleteSlot, referrerSlots,
+    referralRequests, scoringParameters, saveCalendlyUrl,
   } = useReferralStore();
   const [scores, setScores] = useState<Record<string, Record<string, number | "">>>({});
   const [comments, setComments] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState<Set<string>>(new Set());
 
-  const [slotDate, setSlotDate] = useState("");
-  const [slotTime, setSlotTime] = useState("");
-  const [slotDuration, setSlotDuration] = useState(30);
-  const [addingSlot, setAddingSlot] = useState(false);
-
-  const today = new Date().toISOString().split("T")[0];
+  const [calendlyUrl, setCalendlyUrl] = useState(user.calendly_url || "");
+  const [savingCalendly, setSavingCalendly] = useState(false);
+  const [savedCalendly, setSavedCalendly] = useState(false);
 
   useEffect(() => {
     fetchReferralRequests(user.id);
     fetchScoringParameters();
-    fetchReferrerSlots(user.id);
-  }, [user.id, fetchReferralRequests, fetchScoringParameters, fetchReferrerSlots]);
+  }, [user.id, fetchReferralRequests, fetchScoringParameters]);
 
   const myRequests = useMemo(
     () => referralRequests.filter((r) => r.referrer_id === user.id),
     [referralRequests, user.id]
   );
-  const now = new Date().toISOString();
-  const upcomingInterviews = myRequests.filter(
-    (r) => r.status === "scheduled" && r.interview_at && r.interview_at > now
-  );
-  const readyToScore = myRequests.filter(
-    (r) => r.status === "pending" || (r.status === "scheduled" && r.interview_at && r.interview_at <= now)
-  );
+
   const pending = myRequests.filter((r) => r.status === "pending");
+  const scheduled = myRequests.filter((r) => r.status === "scheduled");
+  const readyToScore = myRequests.filter((r) => r.status === "pending" || r.status === "scheduled");
   const scored = myRequests.filter((r) => r.status === "scored");
 
-  const handleAddSlot = async () => {
-    if (!slotDate || !slotTime) {
-      toast.error("Pick a date and time.");
-      return;
-    }
-    const slotStart = new Date(`${slotDate}T${slotTime}`).toISOString();
-    setAddingSlot(true);
+  const handleSaveCalendlyUrl = async () => {
+    if (!calendlyUrl.trim()) return;
+    setSavingCalendly(true);
     try {
-      await createSlot({ referrer_id: user.id, slot_start: slotStart, duration_mins: slotDuration });
-      toast.success("Slot added!");
-      setSlotDate("");
-      setSlotTime("");
+      await saveCalendlyUrl(user.id, calendlyUrl.trim());
+      setSavedCalendly(true);
+      setTimeout(() => setSavedCalendly(false), 2000);
     } catch {
-      toast.error("Failed to add slot.");
+      toast.error("Failed to save Calendly link");
     } finally {
-      setAddingSlot(false);
+      setSavingCalendly(false);
     }
   };
-
-  const handleDeleteSlot = async (slotId: string) => {
-    try {
-      await deleteSlot(slotId);
-      toast.success("Slot removed.");
-    } catch {
-      toast.error("Failed to remove slot.");
-    }
-  };
-
-  const workExperience = typeof user.workExperience === "object" && user.workExperience !== null
-    ? (user.workExperience as Record<string, unknown>) : null;
 
   const handleScoreChange = (reqId: string, paramId: string, value: number | "") => {
     if (value !== "" && (value < 0 || value > 10)) return;
@@ -126,7 +93,7 @@ export const ReferrerDashboard = ({ user, activeTab }: ReferrerDashboardProps) =
       setScores((prev) => { const n = { ...prev }; delete n[requestId]; return n; });
       setComments((prev) => { const n = { ...prev }; delete n[requestId]; return n; });
       await fetchReferralRequests(user.id);
-    } catch (err) {
+    } catch {
       toast.error("Failed to submit. Try again.");
     } finally {
       setSubmitting((s) => { const n = new Set(s); n.delete(requestId); return n; });
@@ -144,120 +111,53 @@ export const ReferrerDashboard = ({ user, activeTab }: ReferrerDashboardProps) =
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 }}>
           {[
-            { label: "Pending reviews", value: pending.length, icon: Clock, color: "#d97706" },
+            { label: "Pending reviews", value: pending.length + scheduled.length, icon: Clock, color: "#d97706" },
             { label: "Completed", value: scored.length, icon: Award, color: "#059669" },
             { label: "Total requests", value: myRequests.length, icon: Star, color: "#7c3aed" },
           ].map((s, i) => <StatCard key={i} {...s} delay={i * 0.08} />)}
         </div>
 
-        {/* Availability card */}
-        <div className="surface-card" style={{ padding: 20 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)" }}>
-              Manage Availability
-            </div>
-            <span style={badgeStyle}>{referrerSlots.length} slot{referrerSlots.length !== 1 ? "s" : ""}</span>
+        <div style={{ background: "var(--surface)", border: "1px solid var(--border-soft)", borderRadius: 14, padding: 20 }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)", marginBottom: 4 }}>Interview Availability</div>
+          <div style={{ fontSize: 13, color: "var(--ink-3)", marginBottom: 14, lineHeight: 1.5 }}>
+            Connect your Calendly link so seekers can book interviews directly.
+            <a href="https://calendly.com" target="_blank" rel="noopener noreferrer" style={{ color: "var(--seeker)", marginLeft: 4 }}>Create a free account →</a>
           </div>
-
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
+          <div style={{ display: "flex", gap: 10 }}>
             <input
-              type="date"
-              min={today}
-              value={slotDate}
-              onChange={(e) => setSlotDate(e.target.value)}
+              type="url"
+              placeholder="https://calendly.com/your-name/30min"
+              value={calendlyUrl}
+              onChange={e => setCalendlyUrl(e.target.value)}
               style={{
-                height: 34, borderRadius: 8, border: "1px solid var(--border-med)",
-                padding: "0 10px", fontSize: 13, color: "var(--ink)",
-                background: "var(--surface)", fontFamily: "inherit", outline: "none",
+                flex: 1, height: 40, padding: "0 12px", borderRadius: 10,
+                border: "1px solid var(--border-med)", fontSize: 14,
+                color: "var(--ink)", background: "var(--surface)", fontFamily: "inherit", outline: "none",
               }}
             />
-            <input
-              type="time"
-              step="1800"
-              value={slotTime}
-              onChange={(e) => setSlotTime(e.target.value)}
-              style={{
-                height: 34, borderRadius: 8, border: "1px solid var(--border-med)",
-                padding: "0 10px", fontSize: 13, color: "var(--ink)",
-                background: "var(--surface)", fontFamily: "inherit", outline: "none",
-              }}
-            />
-            <select
-              value={slotDuration}
-              onChange={(e) => setSlotDuration(Number(e.target.value))}
-              style={{
-                height: 34, borderRadius: 8, border: "1px solid var(--border-med)",
-                padding: "0 10px", fontSize: 13, color: "var(--ink)",
-                background: "var(--surface)", fontFamily: "inherit", outline: "none",
-              }}
-            >
-              <option value={30}>30 min</option>
-              <option value={45}>45 min</option>
-              <option value={60}>60 min</option>
-            </select>
             <button
-              onClick={handleAddSlot}
-              disabled={addingSlot}
-              style={{ ...primaryBtnStyle, gap: 6 }}
+              onClick={handleSaveCalendlyUrl}
+              disabled={savingCalendly}
+              style={{ ...primaryBtnStyle, padding: "0 16px", height: 40, borderRadius: 10, gap: 6, flexShrink: 0 }}
             >
-              <Plus size={13} />
-              {addingSlot ? "Adding…" : "Add slot"}
+              {savingCalendly ? "Saving…" : savedCalendly ? "Saved ✓" : "Save"}
             </button>
           </div>
-
-          {referrerSlots.length === 0 ? (
-            <div style={{ fontSize: 13, color: "var(--ink-4)", textAlign: "center", padding: "12px 0" }}>
-              No upcoming slots. Add one above.
-            </div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {referrerSlots.map((slot) => (
-                <div key={slot.id} style={{
-                  display: "flex", alignItems: "center", justifyContent: "space-between",
-                  padding: "10px 14px", borderRadius: 10,
-                  border: "1px solid var(--border-soft)",
-                  background: slot.is_booked ? "#ecfdf5" : "var(--surface-2)",
-                }}>
-                  <span style={{ fontSize: 13, color: "var(--ink)", fontWeight: 500 }}>
-                    {fmtSlotLabel(slot.slot_start, slot.duration_mins)}
-                  </span>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    {slot.is_booked ? (
-                      <>
-                        <span style={{
-                          fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 999,
-                          background: "#d1fae5", color: "#059669", border: "1px solid #a7f3d0",
-                        }}>
-                          Booked
-                        </span>
-                      </>
-                    ) : (
-                      <button
-                        onClick={() => handleDeleteSlot(slot.id)}
-                        style={{
-                          background: "transparent", border: "none", cursor: "pointer",
-                          color: "#ef4444", display: "flex", padding: 4, borderRadius: 6,
-                        }}
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
+          {user.calendly_url && (
+            <div style={{ marginTop: 10, fontSize: 12, color: "var(--ink-3)" }}>
+              Current: <a href={user.calendly_url} target="_blank" rel="noopener noreferrer" style={{ color: "var(--seeker)" }}>{user.calendly_url}</a>
             </div>
           )}
         </div>
 
-        {/* Pending queue preview */}
-        {pending.length > 0 && (
+        {(pending.length > 0 || scheduled.length > 0) && (
           <div className="surface-card" style={{ padding: 20 }}>
             <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)", marginBottom: 14 }}>Pending review queue</div>
-            {pending.map((r, i) => (
+            {[...pending, ...scheduled].map((r, i) => (
               <div key={r.id} style={{
                 display: "flex", alignItems: "center", justifyContent: "space-between",
                 padding: "12px 0",
-                borderBottom: i < pending.length - 1 ? "1px solid var(--border-soft)" : "none",
+                borderBottom: i < pending.length + scheduled.length - 1 ? "1px solid var(--border-soft)" : "none",
               }}>
                 <div>
                   <div style={{ fontSize: 14, fontWeight: 500, color: "var(--ink)" }}>{roleLabel(r.job_role)}</div>
@@ -272,7 +172,6 @@ export const ReferrerDashboard = ({ user, activeTab }: ReferrerDashboardProps) =
     );
   }
 
-  // Reviews tab
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <h2 style={{ fontSize: 18, fontWeight: 700, letterSpacing: "-0.03em", color: "var(--ink)" }}>Review Queue</h2>
@@ -283,55 +182,6 @@ export const ReferrerDashboard = ({ user, activeTab }: ReferrerDashboardProps) =
           title="Nothing to review yet"
           body="Requests from candidates with matching experience will appear here."
         />
-      )}
-
-      {upcomingInterviews.length > 0 && (
-        <>
-          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-            Upcoming interviews
-          </div>
-          {upcomingInterviews.map((req, i) => (
-            <div key={req.id} style={{
-              padding: 20, borderRadius: 18,
-              border: "1px solid #bfdbfe",
-              background: "#eff6ff",
-              animationDelay: `${i * 0.07}s`,
-            }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                <div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                    <div style={{ fontSize: 15, fontWeight: 600, color: "var(--ink)", letterSpacing: "-0.02em" }}>
-                      {roleLabel(req.job_role)}
-                    </div>
-                    <span style={badgeStyle}>{req.seeker_experience_years} yrs</span>
-                    <ScheduledBadge />
-                  </div>
-                  {req.interview_at && (
-                    <div style={{ fontSize: 13, color: "var(--seeker)", marginTop: 6, fontWeight: 500 }}>
-                      <CalendarCheck size={12} style={{ display: "inline", verticalAlign: "middle", marginRight: 4 }} />
-                      {fmtSlotLabel(req.interview_at, 30)}
-                    </div>
-                  )}
-                </div>
-                {req.meet_link && (
-                  <a
-                    href={req.meet_link}
-                    target="_blank"
-                    rel="noreferrer"
-                    style={{
-                      display: "inline-flex", alignItems: "center", gap: 6,
-                      background: "var(--seeker)", color: "white",
-                      borderRadius: 9, padding: "0 14px", height: 34,
-                      fontSize: 13, fontWeight: 600, textDecoration: "none",
-                    }}
-                  >
-                    <Video size={13} /> Join meeting
-                  </a>
-                )}
-              </div>
-            </div>
-          ))}
-        </>
       )}
 
       {readyToScore.length > 0 && (
@@ -353,13 +203,23 @@ export const ReferrerDashboard = ({ user, activeTab }: ReferrerDashboardProps) =
                       {roleLabel(req.job_role)}
                     </div>
                     <span style={badgeStyle}>{req.seeker_experience_years} yrs</span>
-                    <PendingBadge />
+                    {req.status === "scheduled" ? <ScheduledBadge /> : <PendingBadge />}
                   </div>
                   <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 3 }}>
                     Requested {new Date(req.created_at ?? Date.now()).toLocaleDateString()}
                   </div>
                 </div>
               </div>
+
+              {req.status === "scheduled" && (
+                <div style={{
+                  padding: "10px 14px", background: "#eff6ff", borderRadius: 10,
+                  border: "1px solid #bfdbfe", marginBottom: 18,
+                  fontSize: 13, color: "#2563eb", fontWeight: 500,
+                }}>
+                  After your interview, submit scores below.
+                </div>
+              )}
 
               <div style={{
                 padding: "12px 14px", background: "var(--surface-2)", borderRadius: 10,

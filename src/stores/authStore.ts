@@ -17,6 +17,7 @@ export interface User {
   organizations?: string[] | null;
   current_organization?: string | null;
   onboarded: boolean;
+  calendly_url?: string | null;
   createdAt?: string | null;
   is_admin?: boolean;
 }
@@ -57,6 +58,7 @@ const profileToUser = (row: any): User => ({
   organizations: row.organizations ?? null,
   current_organization: row.current_organization ?? null,
   onboarded: !!row.onboarded,
+  calendly_url: row.calendly_url ?? null,
   createdAt: row.created_at ?? null,
   is_admin: !!row.is_admin,
 });

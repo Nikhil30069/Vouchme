@@ -73,7 +73,9 @@ interface ReferralState {
     jobRole: string;
     seekerExperience: number;
   }) => Promise<void>;
-  
+  saveCalendlyUrl: (userId: string, url: string) => Promise<void>;
+  fetchCalendlyUrls: (userIds: string[]) => Promise<Record<string, string | null>>;
+
   // Mutations
   createReferralRequest: (data: {
     seeker_id: string;
@@ -675,16 +677,6 @@ export const useReferralStore = create<ReferralState>((set, get) => ({
   },
 
   bookSlot: async ({ slotId, seekerId, referrerId, jobRequirementId, jobRole, seekerExperience }) => {
-    const meetId = Math.random().toString(36).slice(2, 10);
-    const meetLink = `https://meet.jit.si/vouchme-${meetId}`;
-
-    const { data: slotData, error: slotErr } = await supabase
-      .from('referrer_slots')
-      .select('slot_start')
-      .eq('id', slotId)
-      .single();
-    if (slotErr || !slotData) throw slotErr || new Error('Slot not found');
-
     const { error: rrErr } = await supabase.from('referral_requests').insert({
       seeker_id: seekerId,
       referrer_id: referrerId,
@@ -692,21 +684,26 @@ export const useReferralStore = create<ReferralState>((set, get) => ({
       job_role: jobRole,
       seeker_experience_years: seekerExperience,
       status: 'scheduled',
-      slot_id: slotId,
-      interview_at: slotData.slot_start,
-      meet_link: meetLink,
+      slot_id: slotId || null,
+      interview_at: null,
+      meet_link: null,
     });
     if (rrErr) throw rrErr;
-
-    const { error: bookErr } = await supabase
-      .from('referrer_slots')
-      .update({ is_booked: true, booked_by: seekerId })
-      .eq('id', slotId);
-    if (bookErr) throw bookErr;
-
     await get().fetchReferralRequests(seekerId);
     await get().fetchReferralRequests(referrerId);
-    await get().fetchReferrerSlots(referrerId);
+  },
+
+  saveCalendlyUrl: async (userId, url) => {
+    const { error } = await supabase.from('profiles').update({ calendly_url: url }).eq('id', userId);
+    if (error) throw error;
+  },
+
+  fetchCalendlyUrls: async (userIds) => {
+    if (!userIds.length) return {};
+    const { data } = await supabase.from('profiles').select('id, calendly_url').in('id', userIds);
+    const map: Record<string, string | null> = {};
+    (data || []).forEach((p: any) => { map[p.id] = p.calendly_url; });
+    return map;
   },
 
   // Utility
