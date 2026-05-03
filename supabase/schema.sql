@@ -616,15 +616,17 @@ LANGUAGE sql
 SECURITY DEFINER
 SET search_path = public
 AS $$
-  SELECT
-    p.id                                                          AS user_id,
-    COALESCE(p.name, split_part(p.email, '@', 1))                AS name,
-    COALESCE(p.current_organization, '—')                        AS organization,
-    COUNT(tc.id) FILTER (WHERE tc.score >= 6)                    AS tests_passed,
-    COALESCE(SUM(tc.karma_change), 0)                            AS total_karma
-  FROM public.profiles p
-  INNER JOIN public.test_completions tc ON tc.user_id = p.id
-  GROUP BY p.id, p.name, p.email, p.current_organization
+  SELECT * FROM (
+    SELECT
+      p.id                                                        AS user_id,
+      COALESCE(p.name, split_part(p.email, '@', 1))              AS name,
+      COALESCE(p.current_organization, '—')                      AS organization,
+      COUNT(tc.id) FILTER (WHERE tc.score >= 6)                  AS tests_passed,
+      COALESCE(SUM(tc.karma_change), 0)                          AS total_karma
+    FROM public.profiles p
+    INNER JOIN public.test_completions tc ON tc.user_id = p.id
+    GROUP BY p.id, p.name, p.email, p.current_organization
+  ) ranked
   ORDER BY total_karma DESC, tests_passed DESC
   LIMIT limit_n;
 $$;
