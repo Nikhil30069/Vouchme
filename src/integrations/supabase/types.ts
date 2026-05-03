@@ -120,6 +120,9 @@ export type Database = {
           job_role: string;
           seeker_experience_years: number;
           status: string;
+          slot_id: string | null;
+          interview_at: string | null;
+          meet_link: string | null;
           created_at: string | null;
           updated_at: string | null;
         };
@@ -131,10 +134,35 @@ export type Database = {
           job_role: string;
           seeker_experience_years: number;
           status?: string;
+          slot_id?: string | null;
+          interview_at?: string | null;
+          meet_link?: string | null;
           created_at?: string | null;
           updated_at?: string | null;
         };
         Update: Partial<Database["public"]["Tables"]["referral_requests"]["Insert"]>;
+        Relationships: [];
+      };
+      referrer_slots: {
+        Row: {
+          id: string;
+          referrer_id: string;
+          slot_start: string;
+          duration_mins: number;
+          is_booked: boolean;
+          booked_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          referrer_id: string;
+          slot_start: string;
+          duration_mins?: number;
+          is_booked?: boolean;
+          booked_by?: string | null;
+          created_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["referrer_slots"]["Insert"]>;
         Relationships: [];
       };
       scores: {

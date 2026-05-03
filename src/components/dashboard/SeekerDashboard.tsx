@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
-import { Briefcase, Clock, Plus, Send, Star } from "lucide-react";
+import { Briefcase, CalendarCheck, Clock, Plus, Send, Star, Video } from "lucide-react";
 import { User } from "@/stores/authStore";
 import { useReferralStore } from "@/stores/referralStore";
 import { JobRequirementForm } from "./JobRequirementForm";
 import { StrengthScore } from "./StrengthScore";
-import { ReferrerSelectionPopup } from "./ReferrerSelectionPopup";
+import { BookInterviewModal } from "./BookInterviewModal";
 import { TestSuite } from "./TestSuite";
 import { supabase } from "@/integrations/supabase/client";
 import { JOB_ROLES } from "@/constants/roles";
@@ -51,7 +51,7 @@ export const SeekerDashboard = ({ user, activeTab, onTabChange }: SeekerDashboar
   useEffect(() => { fetchJobs(); }, [fetchJobs]);
 
   const myReferralRequests = referralRequests.filter((req) => req.seeker_id === user.id);
-  const pendingRequests = myReferralRequests.filter((req) => req.status === "pending").length;
+  const pendingRequests = myReferralRequests.filter((req) => req.status === "pending" || req.status === "scheduled").length;
   const scoredRequests = myReferralRequests.filter((req) => req.status === "scored").length;
   const totalRequests = pendingRequests + scoredRequests;
 
@@ -138,17 +138,19 @@ export const SeekerDashboard = ({ user, activeTab, onTabChange }: SeekerDashboar
               onClick={() => { setSelectedJob({ id: job.id, role: job.role, experience: job.yearsOfExperience }); setShowReferrerPopup(true); }}
               style={secondaryBtnStyle}
             >
-              <Send size={12} /> Request referral
+              <CalendarCheck size={12} /> Book an interview
             </button>
           </div>
         ))}
         {showReferrerPopup && selectedJob && (
-          <ReferrerSelectionPopup
+          <BookInterviewModal
             isOpen={showReferrerPopup}
             onClose={() => { setShowReferrerPopup(false); setSelectedJob(null); }}
             jobRequirementId={selectedJob.id}
             jobRole={selectedJob.role}
             jobExperience={selectedJob.experience}
+            seekerId={user.id}
+            onBooked={() => { setShowReferrerPopup(false); setSelectedJob(null); fetchReferralRequests(user.id); }}
           />
         )}
       </div>
@@ -160,16 +162,41 @@ export const SeekerDashboard = ({ user, activeTab, onTabChange }: SeekerDashboar
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <h2 style={{ fontSize: 18, fontWeight: 700, letterSpacing: "-0.03em", color: "var(--ink)" }}>Referral Requests</h2>
       {myReferralRequests.length === 0 ? (
-        <EmptyState icon={<Send size={40} color="var(--ink-4)" />} title="No requests yet" body="Post a requirement and request referrals to see them here." />
+        <EmptyState icon={<Send size={40} color="var(--ink-4)" />} title="No requests yet" body="Post a requirement and book an interview to see them here." />
       ) : myReferralRequests.map((r, i) => (
-        <div key={r.id} className="surface-card" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 18px", animationDelay: `${i * 0.07}s` }}>
-          <div>
-            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)" }}>{roleLabel(r.job_role)}</div>
-            <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 3 }}>
-              Sent {new Date(r.created_at ?? Date.now()).toLocaleDateString()} · {r.seeker_experience_years} years exp
+        <div key={r.id} className="surface-card" style={{ padding: "14px 18px", animationDelay: `${i * 0.07}s` }}>
+          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)" }}>{roleLabel(r.job_role)}</div>
+              <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 3 }}>
+                Sent {new Date(r.created_at ?? Date.now()).toLocaleDateString()} · {r.seeker_experience_years} years exp
+              </div>
+              {r.interview_at && (
+                <div style={{ fontSize: 13, color: "var(--seeker)", marginTop: 6, fontWeight: 500, display: "flex", alignItems: "center", gap: 5 }}>
+                  <CalendarCheck size={12} />
+                  Interview: {new Date(r.interview_at).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })} · {new Date(r.interview_at).toLocaleTimeString("en-GB", { hour: "numeric", minute: "2-digit", hour12: true }).toUpperCase()}
+                </div>
+              )}
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8 }}>
+              <StatusBadge status={r.status} />
+              {r.meet_link && (
+                <a
+                  href={r.meet_link}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{
+                    display: "inline-flex", alignItems: "center", gap: 5,
+                    background: "var(--seeker)", color: "white",
+                    borderRadius: 8, padding: "0 12px", height: 28,
+                    fontSize: 12, fontWeight: 600, textDecoration: "none",
+                  }}
+                >
+                  <Video size={11} /> Join meeting
+                </a>
+              )}
             </div>
           </div>
-          <StatusBadge status={r.status} />
         </div>
       ))}
     </div>
@@ -215,21 +242,38 @@ const StatCard = ({ icon: Icon, label, value, color, delay = 0 }: { icon: any; l
 );
 
 const StatusBadge = ({ status }: { status: string }) => {
-  const scored = status === "scored";
+  if (status === "scored") {
+    return (
+      <span style={{
+        display: "inline-flex", alignItems: "center", gap: 5,
+        fontSize: 11, fontWeight: 600, letterSpacing: "0.02em", textTransform: "uppercase",
+        padding: "3px 9px", borderRadius: 999,
+        background: "#ecfdf5", color: "#059669", border: "1px solid #a7f3d0",
+      }}>
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M20 6 9 17l-5-5"/></svg> Reviewed
+      </span>
+    );
+  }
+  if (status === "scheduled") {
+    return (
+      <span style={{
+        display: "inline-flex", alignItems: "center", gap: 5,
+        fontSize: 11, fontWeight: 600, letterSpacing: "0.02em", textTransform: "uppercase",
+        padding: "3px 9px", borderRadius: 999,
+        background: "#eff6ff", color: "#2563eb", border: "1px solid #bfdbfe",
+      }}>
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg> Scheduled
+      </span>
+    );
+  }
   return (
     <span style={{
       display: "inline-flex", alignItems: "center", gap: 5,
       fontSize: 11, fontWeight: 600, letterSpacing: "0.02em", textTransform: "uppercase",
       padding: "3px 9px", borderRadius: 999,
-      background: scored ? "#ecfdf5" : "#fffbeb",
-      color: scored ? "#059669" : "#d97706",
-      border: `1px solid ${scored ? "#a7f3d0" : "#fde68a"}`,
+      background: "#fffbeb", color: "#d97706", border: "1px solid #fde68a",
     }}>
-      {scored ? (
-        <><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M20 6 9 17l-5-5"/></svg> Reviewed</>
-      ) : (
-        <><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> Pending</>
-      )}
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> Pending
     </span>
   );
 };

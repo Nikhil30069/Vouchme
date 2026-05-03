@@ -631,4 +631,52 @@ $$;
 
 -- Only authenticated users may call this function
 REVOKE ALL ON FUNCTION public.get_leaderboard(INTEGER) FROM PUBLIC;
+
+-- ---------------------------------------------------------------------
+-- referrer_slots: calendar slots a referrer offers for interviews
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.referrer_slots (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  referrer_id   UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  slot_start    TIMESTAMPTZ NOT NULL,
+  duration_mins INTEGER NOT NULL DEFAULT 30 CHECK (duration_mins IN (30, 45, 60)),
+  is_booked     BOOLEAN NOT NULL DEFAULT false,
+  booked_by     UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (referrer_id, slot_start)
+);
+
+CREATE INDEX IF NOT EXISTS idx_rs_referrer  ON public.referrer_slots(referrer_id);
+CREATE INDEX IF NOT EXISTS idx_rs_available ON public.referrer_slots(is_booked, slot_start);
+
+ALTER TABLE public.referrer_slots ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "rs_select" ON public.referrer_slots;
+CREATE POLICY "rs_select" ON public.referrer_slots
+  FOR SELECT USING (auth.uid() IS NOT NULL);
+
+DROP POLICY IF EXISTS "rs_insert" ON public.referrer_slots;
+CREATE POLICY "rs_insert" ON public.referrer_slots
+  FOR INSERT WITH CHECK (auth.uid() = referrer_id);
+
+DROP POLICY IF EXISTS "rs_update" ON public.referrer_slots;
+CREATE POLICY "rs_update" ON public.referrer_slots
+  FOR UPDATE USING (auth.uid() = referrer_id OR auth.uid() IS NOT NULL);
+
+DROP POLICY IF EXISTS "rs_delete" ON public.referrer_slots;
+CREATE POLICY "rs_delete" ON public.referrer_slots
+  FOR DELETE USING (auth.uid() = referrer_id AND is_booked = false);
+
+-- Add interview columns to referral_requests
+ALTER TABLE public.referral_requests
+  ADD COLUMN IF NOT EXISTS slot_id      UUID REFERENCES public.referrer_slots(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS interview_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS meet_link    TEXT;
+
+-- Widen status to include 'scheduled'
+ALTER TABLE public.referral_requests
+  DROP CONSTRAINT IF EXISTS referral_requests_status_check;
+ALTER TABLE public.referral_requests
+  ADD CONSTRAINT referral_requests_status_check
+  CHECK (status IN ('pending', 'scheduled', 'completed', 'scored'));
 GRANT EXECUTE ON FUNCTION public.get_leaderboard(INTEGER) TO authenticated;

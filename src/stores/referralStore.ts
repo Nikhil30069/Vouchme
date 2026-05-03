@@ -8,6 +8,16 @@ type Score = Database['public']['Tables']['scores']['Row'];
 type JobPosting = Database['public']['Tables']['job_postings']['Row'];
 type CandidateMatch = Database['public']['Tables']['candidate_matches']['Row'];
 
+export interface ReferrerSlot {
+  id: string;
+  referrer_id: string;
+  slot_start: string;
+  duration_mins: number;
+  is_booked: boolean;
+  booked_by: string | null;
+  created_at: string;
+}
+
 interface EligibleReferrer {
   referrer_id: string;
   referrer_name: string;
@@ -38,6 +48,7 @@ interface ReferralState {
   candidateMatches: CandidateMatch[];
   eligibleReferrers: EligibleReferrer[];
   topCandidates: TopCandidate[];
+  referrerSlots: ReferrerSlot[];
   loading: boolean;
   error: string | null;
 
@@ -50,6 +61,18 @@ interface ReferralState {
   findEligibleReferrers: (role: string, experience: number) => Promise<void>;
   findEligibleReferrersForJob: (jobRequirementId: string) => Promise<void>;
   getTopCandidates: (jobPostingId: string) => Promise<void>;
+  fetchReferrerSlots: (referrerId: string) => Promise<void>;
+  fetchSlotsByReferrers: (referrerIds: string[]) => Promise<Record<string, ReferrerSlot[]>>;
+  createSlot: (data: { referrer_id: string; slot_start: string; duration_mins: number }) => Promise<void>;
+  deleteSlot: (slotId: string) => Promise<void>;
+  bookSlot: (data: {
+    slotId: string;
+    seekerId: string;
+    referrerId: string;
+    jobRequirementId: string;
+    jobRole: string;
+    seekerExperience: number;
+  }) => Promise<void>;
   
   // Mutations
   createReferralRequest: (data: {
@@ -118,6 +141,7 @@ export const useReferralStore = create<ReferralState>((set, get) => ({
   candidateMatches: [],
   eligibleReferrers: [],
   topCandidates: [],
+  referrerSlots: [],
   loading: false,
   error: null,
 
@@ -608,6 +632,81 @@ export const useReferralStore = create<ReferralState>((set, get) => ({
       console.error('Failed to get candidate contact details:', error);
       return null;
     }
+  },
+
+  fetchReferrerSlots: async (referrerId: string) => {
+    const { data } = await supabase
+      .from('referrer_slots')
+      .select('*')
+      .eq('referrer_id', referrerId)
+      .gte('slot_start', new Date().toISOString())
+      .order('slot_start');
+    set({ referrerSlots: (data as ReferrerSlot[]) || [] });
+  },
+
+  fetchSlotsByReferrers: async (referrerIds: string[]) => {
+    if (!referrerIds.length) return {};
+    const { data } = await supabase
+      .from('referrer_slots')
+      .select('*')
+      .in('referrer_id', referrerIds)
+      .eq('is_booked', false)
+      .gte('slot_start', new Date().toISOString())
+      .order('slot_start');
+    const map: Record<string, ReferrerSlot[]> = {};
+    (data as ReferrerSlot[] || []).forEach(s => {
+      if (!map[s.referrer_id]) map[s.referrer_id] = [];
+      map[s.referrer_id].push(s);
+    });
+    return map;
+  },
+
+  createSlot: async (data) => {
+    const { error } = await supabase.from('referrer_slots').insert(data);
+    if (error) throw error;
+    await get().fetchReferrerSlots(data.referrer_id);
+  },
+
+  deleteSlot: async (slotId: string) => {
+    const slot = get().referrerSlots.find(s => s.id === slotId);
+    const { error } = await supabase.from('referrer_slots').delete().eq('id', slotId);
+    if (error) throw error;
+    if (slot) await get().fetchReferrerSlots(slot.referrer_id);
+  },
+
+  bookSlot: async ({ slotId, seekerId, referrerId, jobRequirementId, jobRole, seekerExperience }) => {
+    const meetId = Math.random().toString(36).slice(2, 10);
+    const meetLink = `https://meet.jit.si/vouchme-${meetId}`;
+
+    const { data: slotData, error: slotErr } = await supabase
+      .from('referrer_slots')
+      .select('slot_start')
+      .eq('id', slotId)
+      .single();
+    if (slotErr || !slotData) throw slotErr || new Error('Slot not found');
+
+    const { error: rrErr } = await supabase.from('referral_requests').insert({
+      seeker_id: seekerId,
+      referrer_id: referrerId,
+      job_requirement_id: jobRequirementId,
+      job_role: jobRole,
+      seeker_experience_years: seekerExperience,
+      status: 'scheduled',
+      slot_id: slotId,
+      interview_at: slotData.slot_start,
+      meet_link: meetLink,
+    });
+    if (rrErr) throw rrErr;
+
+    const { error: bookErr } = await supabase
+      .from('referrer_slots')
+      .update({ is_booked: true, booked_by: seekerId })
+      .eq('id', slotId);
+    if (bookErr) throw bookErr;
+
+    await get().fetchReferralRequests(seekerId);
+    await get().fetchReferralRequests(referrerId);
+    await get().fetchReferrerSlots(referrerId);
   },
 
   // Utility
