@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Award, CalendarCheck, CheckCircle, Clock, FileText, Star } from "lucide-react";
-import { User } from "@/stores/authStore";
+import { User, useAuthStore } from "@/stores/authStore";
 import { useReferralStore } from "@/stores/referralStore";
 import { JOB_ROLES } from "@/constants/roles";
 import { toast } from "sonner";
@@ -27,7 +27,10 @@ export const ReferrerDashboard = ({ user, activeTab, onTabChange }: ReferrerDash
   const [comments, setComments] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState<Set<string>>(new Set());
 
-  const [activeCalendlyUrl, setActiveCalendlyUrl] = useState(user.calendly_url || "");
+  // Read directly from the store so the embed updates immediately when the
+  // CalendlySetupModal saves and calls updateUser — no page refresh needed.
+  const activeCalendlyUrl = useAuthStore((s) => s.user?.calendly_url || "");
+  const updateUser = useAuthStore((s) => s.updateUser);
   const [showEditCalendly, setShowEditCalendly] = useState(false);
   const [editCalendlyUrl, setEditCalendlyUrl] = useState(user.calendly_url || "");
   const [savingCalendly, setSavingCalendly] = useState(false);
@@ -89,8 +92,7 @@ export const ReferrerDashboard = ({ user, activeTab, onTabChange }: ReferrerDash
     setSavingCalendly(true);
     try {
       await saveCalendlyUrl(user.id, trimmed);
-      user.calendly_url = trimmed;
-      setActiveCalendlyUrl(trimmed);
+      updateUser({ calendly_url: trimmed });
       setSavedCalendly(true);
       setShowEditCalendly(false);
       setTimeout(() => setSavedCalendly(false), 2000);
