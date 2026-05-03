@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { Clock, Users, X } from "lucide-react";
 import { useReferralStore } from "@/stores/referralStore";
 import { JOB_ROLES } from "@/constants/roles";
@@ -108,7 +109,7 @@ export const BookInterviewModal = ({
 
   if (!isOpen) return null;
 
-  return (
+  return createPortal(
     <div style={{
       position: "fixed", inset: 0, zIndex: 1000,
       background: "rgba(0,0,0,0.5)",
@@ -241,6 +242,7 @@ export const BookInterviewModal = ({
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
