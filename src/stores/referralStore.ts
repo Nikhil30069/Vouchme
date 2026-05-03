@@ -694,8 +694,27 @@ export const useReferralStore = create<ReferralState>((set, get) => ({
   },
 
   saveCalendlyUrl: async (userId, url) => {
-    const { error } = await supabase.from('profiles').update({ calendly_url: url }).eq('id', userId);
+    // Verify the session is active before attempting the update.
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) throw new Error('Session expired — please sign out and sign back in.');
+
+    // Use the verified session user ID (not the passed param) to guarantee
+    // the value matches auth.uid() in the RLS policy.
+    const authId = session.user.id;
+
+    // Add .select() so Supabase returns the updated row — without it the
+    // client always gets HTTP 204 and { error: null } even when RLS blocked
+    // the update and 0 rows were changed.
+    const { data, error } = await supabase
+      .from('profiles')
+      .update({ calendly_url: url })
+      .eq('id', authId)
+      .select('id, calendly_url');
+
     if (error) throw error;
+    if (!data || data.length === 0) {
+      throw new Error('Could not save — your session may have expired. Please sign out and sign back in.');
+    }
   },
 
   fetchCalendlyUrls: async (userIds) => {

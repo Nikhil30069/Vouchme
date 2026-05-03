@@ -402,7 +402,7 @@ CREATE POLICY "profiles_insert_self" ON public.profiles
   FOR INSERT WITH CHECK (auth.uid() = id);
 DROP POLICY IF EXISTS "profiles_update_self" ON public.profiles;
 CREATE POLICY "profiles_update_self" ON public.profiles
-  FOR UPDATE USING (auth.uid() = id);
+  FOR UPDATE USING (auth.uid() = id) WITH CHECK (auth.uid() = id);
 
 -- job_requirements
 DROP POLICY IF EXISTS "jr_select_authenticated" ON public.job_requirements;
