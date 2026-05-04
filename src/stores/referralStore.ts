@@ -66,7 +66,6 @@ interface ReferralState {
   createSlot: (data: { referrer_id: string; slot_start: string; duration_mins: number }) => Promise<void>;
   deleteSlot: (slotId: string) => Promise<void>;
   bookSlot: (data: {
-    slotId: string;
     seekerId: string;
     referrerId: string;
     jobRequirementId: string;
@@ -676,21 +675,17 @@ export const useReferralStore = create<ReferralState>((set, get) => ({
     if (slot) await get().fetchReferrerSlots(slot.referrer_id);
   },
 
-  bookSlot: async ({ slotId, seekerId, referrerId, jobRequirementId, jobRole, seekerExperience }) => {
+  bookSlot: async ({ seekerId, referrerId, jobRequirementId, jobRole, seekerExperience }) => {
     const { error: rrErr } = await supabase.from('referral_requests').insert({
       seeker_id: seekerId,
       referrer_id: referrerId,
       job_requirement_id: jobRequirementId,
       job_role: jobRole,
       seeker_experience_years: seekerExperience,
-      status: 'scheduled',
-      slot_id: slotId || null,
-      interview_at: null,
-      meet_link: null,
+      status: 'pending',
     });
     if (rrErr) throw rrErr;
     await get().fetchReferralRequests(seekerId);
-    await get().fetchReferralRequests(referrerId);
   },
 
   saveCalendlyUrl: async (userId, url) => {

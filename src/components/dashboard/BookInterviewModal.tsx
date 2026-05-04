@@ -87,14 +87,12 @@ export const BookInterviewModal = ({
       setBooked(true);
       try {
         await bookSlot({
-          slotId: '',
           seekerId,
           referrerId: selectedReferrer.referrer_id,
           jobRequirementId,
           jobRole,
           seekerExperience: jobExperience,
         });
-        onBooked();
       } catch (err: any) {
         console.error('[BookInterviewModal] bookSlot failed:', err);
         toast.error(err?.message ?? 'Failed to save booking — please contact support.');

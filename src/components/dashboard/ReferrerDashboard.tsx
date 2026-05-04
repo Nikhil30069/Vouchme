@@ -71,8 +71,8 @@ export const ReferrerDashboard = ({ user, activeTab, onTabChange }: ReferrerDash
   const scored = myRequests.filter((r) => r.status === "scored");
 
   const scheduledSorted = useMemo(
-    () => [...scheduled].sort((a, b) => new Date(a.created_at ?? 0).getTime() - new Date(b.created_at ?? 0).getTime()),
-    [scheduled]
+    () => [...pending, ...scheduled].sort((a, b) => new Date(a.created_at ?? 0).getTime() - new Date(b.created_at ?? 0).getTime()),
+    [pending, scheduled]
   );
 
   useEffect(() => {
