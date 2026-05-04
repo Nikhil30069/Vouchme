@@ -23,6 +23,7 @@ const mockProfile = {
   roles: ["seeker", "recruiter", "referrer"],
   onboarded: true,
   workExperience: null,
+  calendly_url: "https://calendly.com/aria-sharma/30min",
   updated_at: new Date().toISOString(),
 };
 
@@ -397,7 +398,7 @@ test("13. Referrer — overview tab with pending queue preview", async ({ page }
 
   await expect(page.locator("text=Referrer workspace")).toBeVisible();
   await expect(page.locator("text=Pending reviews").first()).toBeVisible();
-  await expect(page.locator("text=Pending review queue")).toBeVisible();
+  await expect(page.locator("text=Upcoming Interviews")).toBeVisible();
   console.log("✅ 13. Referrer overview tab");
 });
 
@@ -540,4 +541,228 @@ test("20. Empty states render when there is no data", async ({ page }) => {
   await screenshot(page, "20b-seeker-requests-empty");
   await expect(page.locator("text=No requests yet")).toBeVisible();
   console.log("✅ 20. Empty states");
+});
+
+// ── 21. Book Interview modal opens with referrers ─────────────────────────
+
+const mockEligibleReferrers = [
+  {
+    referrer_id: "ref-calendly-1",
+    referrer_name: "Priya Singh",
+    referrer_role: "software-developer",
+    referrer_experience: 6,
+    organization: "Google",
+  },
+];
+
+async function interceptSupabaseWithBooking(page: Page) {
+  await interceptSupabase(page);
+
+  // Override RPC to handle find_eligible_referrers_for_job
+  await page.route(`${SUPABASE}/rest/v1/rpc/find_eligible_referrers_for_job`, async (route) => {
+    await route.fulfill({
+      status: 200, contentType: "application/json",
+      body: JSON.stringify(mockEligibleReferrers),
+    });
+  });
+
+  // Override profiles to handle calendly_url lookups (returns array when select=id,calendly_url)
+  await page.route(`${SUPABASE}/rest/v1/profiles*`, async (route) => {
+    const url = route.request().url();
+    if (url.includes("calendly_url") && url.includes("in.")) {
+      await route.fulfill({
+        status: 200, contentType: "application/json",
+        body: JSON.stringify([{ id: "ref-calendly-1", calendly_url: "https://calendly.com/test-referrer/30min" }]),
+      });
+    } else if (url.includes("ref-calendly-1") || (url.includes("in.") && url.includes("name"))) {
+      // seeker profile lookup in referrer dashboard
+      await route.fulfill({
+        status: 200, contentType: "application/json",
+        body: JSON.stringify([{ id: "mock-user-id", name: "Aria Sharma", avatar_url: null }]),
+      });
+    } else {
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(mockProfile) });
+    }
+  });
+}
+
+test("21. Book Interview — modal opens with eligible referrer shown", async ({ page }) => {
+  await interceptSupabaseWithBooking(page);
+  await page.goto(BASE);
+  await injectMockSession(page);
+  await setDashboardState(page, "seeker");
+  await page.reload();
+  await page.waitForSelector("text=Overview", { timeout: 10000 });
+
+  await sidebarBtn(page, "My Requirements").click();
+  await page.waitForTimeout(400);
+
+  // Click "Book an interview" on the first job card
+  await page.locator("button:has-text('Book an interview')").first().click();
+  await page.waitForTimeout(600);
+  await screenshot(page, "21a-book-interview-modal-opening");
+
+  // Modal header visible
+  await expect(page.locator("text=Book an interview").first()).toBeVisible();
+
+  // Wait for eligible referrers to load
+  await page.waitForTimeout(1200);
+  await screenshot(page, "21b-book-interview-referrer-listed");
+
+  // Referrer name and Available badge should be visible
+  await expect(page.locator("text=Priya Singh")).toBeVisible();
+  await expect(page.locator("text=Available").first()).toBeVisible();
+  await expect(page.locator("text=Google")).toBeVisible();
+  console.log("✅ 21. Book Interview modal opens with eligible referrers");
+});
+
+// ── 22. Book Interview — selecting referrer shows Calendly iframe ─────────
+
+test("22. Book Interview — clicking referrer shows Calendly iframe", async ({ page }) => {
+  await interceptSupabaseWithBooking(page);
+  await page.goto(BASE);
+  await injectMockSession(page);
+  await setDashboardState(page, "seeker");
+  await page.reload();
+  await page.waitForSelector("text=Overview", { timeout: 10000 });
+
+  await sidebarBtn(page, "My Requirements").click();
+  await page.waitForTimeout(400);
+  await page.locator("button:has-text('Book an interview')").first().click();
+  await page.waitForTimeout(1500); // wait for RPC + calendly URL fetches
+
+  // Click "Book Interview" on the referrer
+  await page.locator("button:has-text('Book Interview')").first().click();
+  await page.waitForTimeout(800);
+  await screenshot(page, "22-book-interview-iframe");
+
+  // Iframe should be present with calendly URL
+  const iframe = page.locator("iframe[title='Book a time']");
+  await expect(iframe).toBeVisible();
+  const src = await iframe.getAttribute("src");
+  expect(src).toContain("calendly.com/test-referrer/30min");
+  expect(src).toContain("email=test%40vouchme.io");
+  expect(src).toContain("name=Aria");
+  console.log("✅ 22. Book Interview iframe loads with pre-filled email/name");
+});
+
+// ── 23. Book Interview — postMessage triggers booking, shows success ───────
+
+test("23. Book Interview — calendly.event_scheduled triggers DB insert + success state", async ({ page }) => {
+  let insertCaptured = false;
+
+  await interceptSupabaseWithBooking(page);
+
+  // Capture the POST to referral_requests
+  await page.route(`${SUPABASE}/rest/v1/referral_requests*`, async (route) => {
+    if (route.request().method() === "POST") {
+      insertCaptured = true;
+      const body = JSON.parse(route.request().postData() ?? "{}");
+      expect(body.seeker_id).toBe("mock-user-id");
+      expect(body.referrer_id).toBe("ref-calendly-1");
+      expect(body.status).toBe("pending");
+      expect(body.job_role).toBe("software-developer");
+      await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({}) });
+    } else {
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(allRequests) });
+    }
+  });
+
+  await page.goto(BASE);
+  await injectMockSession(page);
+  await setDashboardState(page, "seeker");
+  await page.reload();
+  await page.waitForSelector("text=Overview", { timeout: 10000 });
+
+  await sidebarBtn(page, "My Requirements").click();
+  await page.waitForTimeout(400);
+  await page.locator("button:has-text('Book an interview')").first().click();
+  await page.waitForTimeout(1500);
+  await page.locator("button:has-text('Book Interview')").first().click();
+  await page.waitForTimeout(800);
+
+  // Iframe should be visible; simulate Calendly postMessage
+  await expect(page.locator("iframe[title='Book a time']")).toBeVisible();
+
+  await page.evaluate(() => {
+    window.postMessage({ event: "calendly.event_scheduled" }, "*");
+  });
+
+  // Wait for async bookSlot call + state update
+  await page.waitForTimeout(2000);
+  await screenshot(page, "23-book-interview-success");
+
+  // "Interview booked!" confirmation state
+  await expect(page.locator("text=Interview booked!")).toBeVisible();
+  expect(insertCaptured).toBe(true);
+  console.log("✅ 23. calendly.event_scheduled triggers insert + shows success screen");
+});
+
+// ── 24. Referrer Upcoming Interviews — shows pending requests ─────────────
+
+test("24. Referrer — Upcoming Interviews shows pending Calendly-booked requests", async ({ page }) => {
+  await loadDashboard(page, "referrer");
+  await screenshot(page, "24a-referrer-overview");
+
+  // Overview should show pending count > 0 in stat card
+  await expect(page.locator("text=Upcoming Interviews")).toBeVisible();
+
+  // req-3 is pending with referrer_id=mock-user-id — should appear in scheduledSorted
+  await page.waitForTimeout(800);
+  await screenshot(page, "24b-referrer-upcoming-interviews");
+  await expect(page.locator("text=Upcoming Interviews")).toBeVisible();
+  // At least one scheduled/pending request shows up (not the empty-state message)
+  await expect(page.locator("text=No upcoming interviews yet")).not.toBeVisible();
+  console.log("✅ 24. Referrer Upcoming Interviews shows pending bookings");
+});
+
+// ── 25. Book Interview — no referrers shows empty state ───────────────────
+
+test("25. Book Interview — no eligible referrers shows empty state", async ({ page }) => {
+  await interceptSupabase(page);
+  // RPC returns empty array
+  await page.route(`${SUPABASE}/rest/v1/rpc/find_eligible_referrers_for_job`, async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([]) });
+  });
+
+  await page.goto(BASE);
+  await injectMockSession(page);
+  await setDashboardState(page, "seeker");
+  await page.reload();
+  await page.waitForSelector("text=Overview", { timeout: 10000 });
+
+  await sidebarBtn(page, "My Requirements").click();
+  await page.waitForTimeout(400);
+  await page.locator("button:has-text('Book an interview')").first().click();
+  await page.waitForTimeout(1200);
+  await screenshot(page, "25-book-interview-no-referrers");
+
+  await expect(page.locator("text=No referrers available yet")).toBeVisible();
+  console.log("✅ 25. Book Interview empty state when no eligible referrers");
+});
+
+// ── 26. Book Interview — close button dismisses modal ────────────────────
+
+test("26. Book Interview — X button closes the modal", async ({ page }) => {
+  await interceptSupabaseWithBooking(page);
+  await page.goto(BASE);
+  await injectMockSession(page);
+  await setDashboardState(page, "seeker");
+  await page.reload();
+  await page.waitForSelector("text=Overview", { timeout: 10000 });
+
+  await sidebarBtn(page, "My Requirements").click();
+  await page.waitForTimeout(400);
+  await page.locator("button:has-text('Book an interview')").first().click();
+  await page.waitForTimeout(600);
+
+  await expect(page.locator("text=Book an interview").first()).toBeVisible();
+  // Click the X close button
+  await page.locator("button[style*='transparent']").filter({ has: page.locator("svg") }).last().click();
+  await page.waitForTimeout(400);
+  await screenshot(page, "26-book-interview-modal-closed");
+
+  // Modal gone, back to jobs tab
+  await expect(page.locator("text=Software Developer").first()).toBeVisible();
+  console.log("✅ 26. Book Interview modal closes on X");
 });

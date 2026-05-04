@@ -82,10 +82,16 @@ export const BookInterviewModal = ({
 
   useEffect(() => {
     const handler = async (e: MessageEvent) => {
+      // Log every postMessage to trace Calendly events
+      if (e.origin?.includes('calendly')) {
+        console.log('[BookInterview] calendly msg:', e.data?.event, e.data);
+      }
       if (e.data?.event !== 'calendly.event_scheduled') return;
+      console.log('[BookInterview] event_scheduled received, selectedReferrer:', selectedReferrer?.referrer_id, 'booked:', booked);
       if (!selectedReferrer || booked) return;
       setBooked(true);
       try {
+        console.log('[BookInterview] calling bookSlot...');
         await bookSlot({
           seekerId,
           referrerId: selectedReferrer.referrer_id,
@@ -93,8 +99,9 @@ export const BookInterviewModal = ({
           jobRole,
           seekerExperience: jobExperience,
         });
+        console.log('[BookInterview] bookSlot succeeded ✓');
       } catch (err: any) {
-        console.error('[BookInterviewModal] bookSlot failed:', err);
+        console.error('[BookInterview] bookSlot failed:', err);
         toast.error(err?.message ?? 'Failed to save booking — please contact support.');
         setBooked(false);
       }
@@ -226,7 +233,7 @@ export const BookInterviewModal = ({
                   {isSelected && r.calendly_url && (
                     <div style={{ borderTop: "1px solid var(--border-soft)", overflow: "hidden" }}>
                       <iframe
-                        src={`${r.calendly_url}?hide_gdpr_banner=1&primary_color=2563eb&embed_type=Inline&email=${encodeURIComponent(seekerEmail)}&name=${encodeURIComponent(seekerName)}`}
+                        src={`${r.calendly_url}?hide_gdpr_banner=1&primary_color=2563eb&embed_type=Inline&embed_domain=${encodeURIComponent(window.location.hostname)}&email=${encodeURIComponent(seekerEmail)}&name=${encodeURIComponent(seekerName)}`}
                         width="100%"
                         height="580"
                         frameBorder="0"
