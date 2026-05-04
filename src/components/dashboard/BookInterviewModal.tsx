@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { createPortal } from "react-dom";
 import { Clock, Users, X } from "lucide-react";
 import { useReferralStore } from "@/stores/referralStore";
@@ -93,7 +94,12 @@ export const BookInterviewModal = ({
           jobRole,
           seekerExperience: jobExperience,
         });
-      } catch {}
+        onBooked();
+      } catch (err: any) {
+        console.error('[BookInterviewModal] bookSlot failed:', err);
+        toast.error(err?.message ?? 'Failed to save booking — please contact support.');
+        setBooked(false);
+      }
     };
     window.addEventListener('message', handler);
     return () => window.removeEventListener('message', handler);
