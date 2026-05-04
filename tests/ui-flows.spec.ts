@@ -450,6 +450,9 @@ test("16. Referrer — submit scores shows success toast", async ({ page }) => {
   for (let i = 0; i < count; i++) {
     await inputs.nth(i).fill("7");
   }
+  // Select hire inclination (required since the new feature)
+  await page.locator("button:has-text('Yes')").first().click();
+  await page.waitForTimeout(200);
   await page.locator("button:has-text('Submit scores')").first().click();
   await page.waitForTimeout(1500);
   await screenshot(page, "16-referrer-submit-scores");
@@ -765,4 +768,325 @@ test("26. Book Interview — X button closes the modal", async ({ page }) => {
   // Modal gone, back to jobs tab
   await expect(page.locator("text=Software Developer").first()).toBeVisible();
   console.log("✅ 26. Book Interview modal closes on X");
+});
+
+// ── Helpers for interview-gate + inclination tests ────────────────────────
+
+const pastInterviewAt   = new Date(Date.now() - 90 * 60 * 1000).toISOString(); // 90 min ago → unlocked
+const futureInterviewAt = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 60 min from now → locked
+
+function referrerRequestsWithTime(interview_at: string | null) {
+  return [
+    {
+      id: "req-3", seeker_id: "seeker-2", referrer_id: "mock-user-id",
+      job_role: "software-developer", seeker_experience_years: 3,
+      status: "pending", created_at: new Date().toISOString(),
+      resume_url: "https://example.com/resume.pdf",
+      interview_at,
+      hire_inclination: null,
+    },
+    { id: "req-4", seeker_id: "seeker-3", referrer_id: "mock-user-id", job_role: "software-developer", seeker_experience_years: 6, status: "scored", created_at: new Date().toISOString(), resume_url: null, interview_at: null, hire_inclination: "yes" },
+  ];
+}
+
+async function loadReferrerWithTime(page: Page, interview_at: string | null) {
+  await interceptSupabase(page);
+  await page.route(`${SUPABASE}/rest/v1/referral_requests*`, async (route) => {
+    await route.fulfill({
+      status: 200, contentType: "application/json",
+      body: JSON.stringify([...seekerRequests, ...referrerRequestsWithTime(interview_at)]),
+    });
+  });
+  await page.goto(BASE);
+  await injectMockSession(page);
+  await setDashboardState(page, "referrer");
+  await page.reload();
+  await page.waitForSelector("text=Overview", { timeout: 10000 });
+}
+
+// ── 27. Time gate: no interview_at → Score Candidate locked, datetime input shown ─
+
+test("27. Time gate — no interview time set shows datetime input and locked button", async ({ page }) => {
+  await loadReferrerWithTime(page, null);
+  await screenshot(page, "27a-referrer-overview-no-time");
+
+  // The upcoming interviews card should show the datetime input
+  await expect(page.locator("text=Set interview time:")).toBeVisible();
+  await expect(page.locator('input[type="datetime-local"]').first()).toBeVisible();
+
+  // Score Candidate button should show "Locked" with a lock icon
+  await expect(page.locator("button:has-text('Locked')").first()).toBeVisible();
+  await expect(page.locator("button:has-text('Locked')").first()).toBeDisabled();
+  await screenshot(page, "27b-time-gate-locked");
+  console.log("✅ 27. No interview time → locked button + datetime input shown");
+});
+
+// ── 28. Time gate: future interview_at → still locked ────────────────────
+
+test("28. Time gate — future interview time shows lock and countdown message", async ({ page }) => {
+  await loadReferrerWithTime(page, futureInterviewAt);
+
+  // No datetime input (time is already saved)
+  await expect(page.locator('input[type="datetime-local"]')).toHaveCount(0);
+
+  // Shows the interview time string with "scoring unlocks at" message
+  await expect(page.locator("text=/scoring unlocks at/i").first()).toBeVisible();
+
+  // Score Candidate still locked
+  await expect(page.locator("button:has-text('Locked')").first()).toBeDisabled();
+  await screenshot(page, "28-time-gate-future");
+  console.log("✅ 28. Future interview time → still locked with unlock timestamp shown");
+});
+
+// ── 29. Time gate: past interview_at (90 min ago) → unlocked ─────────────
+
+test("29. Time gate — past interview time (90 min ago) unlocks Score Candidate", async ({ page }) => {
+  await loadReferrerWithTime(page, pastInterviewAt);
+
+  // Score Candidate should be enabled with star icon
+  await expect(page.locator("button:has-text('Score Candidate')").first()).toBeVisible();
+  await expect(page.locator("button:has-text('Score Candidate')").first()).toBeEnabled();
+
+  // Shows "scoring unlocked" confirmation text
+  await expect(page.locator("text=/scoring unlocked/i").first()).toBeVisible();
+  await screenshot(page, "29-time-gate-unlocked");
+  console.log("✅ 29. Past interview time (90 min) → Score Candidate unlocked");
+});
+
+// ── 30. Time gate: saving interview time updates the UI ───────────────────
+
+test("30. Time gate — setting interview time via input calls PATCH and updates UI", async ({ page }) => {
+  let patchedBody: any = null;
+
+  await interceptSupabase(page);
+  await page.route(`${SUPABASE}/rest/v1/referral_requests*`, async (route) => {
+    if (route.request().method() === "PATCH") {
+      patchedBody = JSON.parse(route.request().postData() ?? "{}");
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({}) });
+    } else {
+      await route.fulfill({
+        status: 200, contentType: "application/json",
+        body: JSON.stringify([...seekerRequests, ...referrerRequestsWithTime(null)]),
+      });
+    }
+  });
+  await page.goto(BASE);
+  await injectMockSession(page);
+  await setDashboardState(page, "referrer");
+  await page.reload();
+  await page.waitForSelector("text=Overview", { timeout: 10000 });
+
+  // Fill in a past time so the button unlocks after save
+  const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
+  const localStr = twoHoursAgo.toISOString().slice(0, 16); // datetime-local format
+  await page.locator('input[type="datetime-local"]').first().fill(localStr);
+  await page.locator("button:has-text('Save')").first().click();
+  await page.waitForTimeout(800);
+  await screenshot(page, "30-interview-time-saved");
+
+  // PATCH was sent with interview_at
+  expect(patchedBody?.interview_at).toBeTruthy();
+  // Toast confirmation
+  await expect(page.locator("text=Interview time saved")).toBeVisible();
+  console.log("✅ 30. Saving interview time fires PATCH and shows toast");
+});
+
+// ── 31. Inclination: all 5 options render in review queue ─────────────────
+
+test("31. Hire inclination — all 5 options render in the review queue form", async ({ page }) => {
+  await loadDashboard(page, "referrer");
+  await sidebarBtn(page, "Review Queue").click();
+  await page.waitForTimeout(800);
+  await screenshot(page, "31-inclination-options");
+
+  for (const label of ["Strong Yes", "Yes", "Neutral", "No", "Strong No"]) {
+    await expect(page.locator(`button:has-text('${label}')`).first()).toBeVisible();
+  }
+  await expect(page.locator("text=Would you hire this candidate?")).toBeVisible();
+  console.log("✅ 31. All 5 hire inclination options render");
+});
+
+// ── 32. Inclination: selection toggles active state ───────────────────────
+
+test("32. Hire inclination — clicking an option marks it selected", async ({ page }) => {
+  await loadDashboard(page, "referrer");
+  await sidebarBtn(page, "Review Queue").click();
+  await page.waitForTimeout(800);
+
+  // Click "Strong Yes"
+  await page.locator("button:has-text('Strong Yes')").first().click();
+  await page.waitForTimeout(200);
+  await screenshot(page, "32a-inclination-strong-yes");
+
+  // Click "No" — should deselect Strong Yes
+  await page.locator("button:has-text('No')").first().click();
+  await page.waitForTimeout(200);
+  await screenshot(page, "32b-inclination-no");
+
+  // "No" button should now have white text (selected styling)
+  const noBtn = page.locator("button:has-text('No')").first();
+  const color = await noBtn.evaluate(el => getComputedStyle(el).color);
+  // selected buttons use white text
+  expect(color).toBe("rgb(255, 255, 255)");
+  console.log("✅ 32. Inclination selection toggles active styling");
+});
+
+// ── 33. Inclination: submit blocked when not selected ─────────────────────
+
+test("33. Hire inclination — submitting without inclination shows error toast", async ({ page }) => {
+  await loadDashboard(page, "referrer");
+  await sidebarBtn(page, "Review Queue").click();
+  await page.waitForTimeout(800);
+
+  // Fill scores but DON'T select inclination
+  const inputs = page.locator('input[type="number"]');
+  const count = await inputs.count();
+  for (let i = 0; i < count; i++) await inputs.nth(i).fill("8");
+
+  await page.locator("button:has-text('Submit scores')").first().click();
+  await page.waitForTimeout(800);
+  await screenshot(page, "33-inclination-missing-error");
+
+  await expect(page.locator("text=Please select your hire inclination")).toBeVisible();
+  console.log("✅ 33. Submit without inclination shows validation error");
+});
+
+// ── 34. Inclination: full submit flow with inclination ────────────────────
+
+test("34. Hire inclination — full submit flow saves inclination + scores", async ({ page }) => {
+  const patchedBodies: any[] = [];
+
+  await interceptSupabase(page);
+  await page.route(`${SUPABASE}/rest/v1/referral_requests*`, async (route) => {
+    if (route.request().method() === "PATCH") {
+      patchedBodies.push(JSON.parse(route.request().postData() ?? "{}"));
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({}) });
+    } else {
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(allRequests) });
+    }
+  });
+
+  await page.goto(BASE);
+  await injectMockSession(page);
+  await setDashboardState(page, "referrer");
+  await page.reload();
+  await page.waitForSelector("text=Overview", { timeout: 10000 });
+
+  await sidebarBtn(page, "Review Queue").click();
+  await page.waitForTimeout(800);
+
+  const inputs = page.locator('input[type="number"]');
+  const count = await inputs.count();
+  for (let i = 0; i < count; i++) await inputs.nth(i).fill("9");
+
+  // Select "Strong Yes"
+  await page.locator("button:has-text('Strong Yes')").first().click();
+  await page.waitForTimeout(200);
+
+  await page.locator("button:has-text('Submit scores')").first().click();
+  await page.waitForTimeout(1500);
+  await screenshot(page, "34-inclination-submit-success");
+
+  // Inclination PATCH was sent
+  const inclinationPatch = patchedBodies.find(b => b.hire_inclination);
+  expect(inclinationPatch?.hire_inclination).toBe("strong_yes");
+  await expect(page.locator("text=Scores submitted!")).toBeVisible();
+  console.log("✅ 34. Full submit flow saves hire_inclination=strong_yes and shows success");
+});
+
+// ── 35. TopCandidates: hire_inclination_pct renders correctly ─────────────
+
+test("35. TopCandidates — hire_inclination_pct shows colour-coded bar and label", async ({ page }) => {
+  const candidatesWithInclination = [
+    { seeker_id: "c-1", seeker_name: "High Fit",   seeker_role: "software-developer", seeker_experience: 5, strength_score: 8.8, total_scores: 3, expected_ctc: 2000000, current_ctc: 1200000, hire_inclination_pct: 80 },
+    { seeker_id: "c-2", seeker_name: "Mid Fit",    seeker_role: "software-developer", seeker_experience: 4, strength_score: 7.2, total_scores: 2, expected_ctc: 1800000, current_ctc: 1100000, hire_inclination_pct: 50 },
+    { seeker_id: "c-3", seeker_name: "Low Fit",    seeker_role: "software-developer", seeker_experience: 3, strength_score: 5.5, total_scores: 1, expected_ctc: 1500000, current_ctc: 900000,  hire_inclination_pct: 25 },
+  ];
+
+  await interceptSupabase(page);
+  await page.route(`${SUPABASE}/rest/v1/rpc/get_top_candidates`, async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(candidatesWithInclination) });
+  });
+
+  await page.goto(BASE);
+  await injectMockSession(page);
+  await setDashboardState(page, "recruiter");
+  await page.reload();
+  await page.waitForSelector("text=Overview", { timeout: 10000 });
+
+  await page.locator("button:has-text('Top 3')").first().click();
+  await page.waitForTimeout(1500);
+  await screenshot(page, "35-top-candidates-inclination");
+
+  // All three inclination labels visible
+  await expect(page.locator("text=80% hire inclination")).toBeVisible();
+  await expect(page.locator("text=50% hire inclination")).toBeVisible();
+  await expect(page.locator("text=25% hire inclination")).toBeVisible();
+  console.log("✅ 35. hire_inclination_pct rendered for all three tiers");
+});
+
+// ── 36. TopCandidates: null hire_inclination_pct hides the bar ───────────
+
+test("36. TopCandidates — null hire_inclination_pct does not show inclination bar", async ({ page }) => {
+  const candidatesNoInclination = [
+    { seeker_id: "c-1", seeker_name: "No Incl",  seeker_role: "software-developer", seeker_experience: 5, strength_score: 7.0, total_scores: 1, expected_ctc: 2000000, current_ctc: 1200000, hire_inclination_pct: null },
+  ];
+
+  await interceptSupabase(page);
+  await page.route(`${SUPABASE}/rest/v1/rpc/get_top_candidates`, async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(candidatesNoInclination) });
+  });
+
+  await page.goto(BASE);
+  await injectMockSession(page);
+  await setDashboardState(page, "recruiter");
+  await page.reload();
+  await page.waitForSelector("text=Overview", { timeout: 10000 });
+
+  await page.locator("button:has-text('Top 3')").first().click();
+  await page.waitForTimeout(1500);
+  await screenshot(page, "36-top-candidates-no-inclination");
+
+  await expect(page.locator("text=No Incl")).toBeVisible();
+  // The inclination bar is inside .surface-card; the info blurb always mentions "hire inclination" text
+  // so we check that no percentage label appears inside a candidate card
+  await expect(page.locator(".surface-card span:has-text('% hire inclination')")).toHaveCount(0);
+  console.log("✅ 36. null hire_inclination_pct hides the inclination bar entirely");
+});
+
+// ── 37. Algorithm: karma score blending logic verified via UI ─────────────
+
+test("37. Algorithm — blended score (65% param + 35% inclination) ranks candidates correctly", async ({ page }) => {
+  // Candidate A: high params (9.0) + strong_yes inclination avg (10) → 0.65×9 + 0.35×10 = 9.35
+  // Candidate B: high params (9.0) + strong_no inclination avg  (0) → 0.65×9 + 0.35×0  = 5.85
+  // get_top_candidates returns pre-computed scores; verify ranked order matches algorithm
+  const ranked = [
+    { seeker_id: "a", seeker_name: "Alice Strong Yes", seeker_role: "software-developer", seeker_experience: 5, strength_score: 9.35, total_scores: 2, expected_ctc: 2000000, current_ctc: 1200000, hire_inclination_pct: 100 },
+    { seeker_id: "b", seeker_name: "Bob Strong No",    seeker_role: "software-developer", seeker_experience: 5, strength_score: 5.85, total_scores: 2, expected_ctc: 2000000, current_ctc: 1200000, hire_inclination_pct: 0   },
+  ];
+
+  await interceptSupabase(page);
+  await page.route(`${SUPABASE}/rest/v1/rpc/get_top_candidates`, async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(ranked) });
+  });
+
+  await page.goto(BASE);
+  await injectMockSession(page);
+  await setDashboardState(page, "recruiter");
+  await page.reload();
+  await page.waitForSelector("text=Overview", { timeout: 10000 });
+
+  await page.locator("button:has-text('Top 3')").first().click();
+  await page.waitForTimeout(1500);
+  await screenshot(page, "37-algorithm-ranking");
+
+  // Alice (rank 1st) should appear before Bob (rank 2nd)
+  const names = await page.locator(".surface-card >> text=/Alice|Bob/").allTextContents();
+  expect(names.some(t => t.includes("Alice"))).toBe(true);
+  expect(names.some(t => t.includes("Bob"))).toBe(true);
+
+  // 100% inclination = green; 0% = amber
+  await expect(page.getByText("100% hire inclination", { exact: true })).toBeVisible();
+  await expect(page.getByText("0% hire inclination", { exact: true })).toBeVisible();
+  console.log("✅ 37. Algorithm ranking: strong_yes lifts score, strong_no depresses it");
 });

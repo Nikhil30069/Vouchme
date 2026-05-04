@@ -37,6 +37,7 @@ interface TopCandidate {
   total_scores: number;
   expected_ctc: number;
   current_ctc: number;
+  hire_inclination_pct: number | null;
 }
 
 interface ReferralState {
@@ -74,6 +75,8 @@ interface ReferralState {
   }) => Promise<void>;
   saveCalendlyUrl: (userId: string, url: string) => Promise<void>;
   fetchCalendlyUrls: (userIds: string[]) => Promise<Record<string, string | null>>;
+  setInterviewAt: (requestId: string, interviewAt: string) => Promise<void>;
+  submitHireInclination: (requestId: string, inclination: string) => Promise<void>;
 
   // Mutations
   createReferralRequest: (data: {
@@ -718,6 +721,30 @@ export const useReferralStore = create<ReferralState>((set, get) => ({
     const map: Record<string, string | null> = {};
     (data || []).forEach((p: any) => { map[p.id] = p.calendly_url; });
     return map;
+  },
+
+  setInterviewAt: async (requestId, interviewAt) => {
+    const { error } = await supabase
+      .from('referral_requests')
+      .update({ interview_at: interviewAt })
+      .eq('id', requestId);
+    if (error) throw error;
+    const updated = get().referralRequests.map(r =>
+      r.id === requestId ? { ...r, interview_at: interviewAt } : r
+    );
+    set({ referralRequests: updated });
+  },
+
+  submitHireInclination: async (requestId, inclination) => {
+    const { error } = await supabase
+      .from('referral_requests')
+      .update({ hire_inclination: inclination })
+      .eq('id', requestId);
+    if (error) throw error;
+    const updated = get().referralRequests.map(r =>
+      r.id === requestId ? { ...r, hire_inclination: inclination } : r
+    );
+    set({ referralRequests: updated });
   },
 
   // Utility

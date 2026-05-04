@@ -134,6 +134,9 @@ CREATE TABLE IF NOT EXISTS public.referral_requests (
   seeker_experience_years INTEGER NOT NULL,
   status TEXT NOT NULL DEFAULT 'pending'
     CHECK (status IN ('pending', 'accepted', 'rejected', 'scored')),
+  interview_at TIMESTAMPTZ,
+  hire_inclination TEXT CHECK (hire_inclination IN ('strong_yes', 'yes', 'neutral', 'no', 'strong_no')),
+  resume_url TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE (seeker_id, referrer_id, job_requirement_id)
@@ -165,6 +168,7 @@ CREATE TABLE IF NOT EXISTS public.strength_scores (
   role TEXT NOT NULL,
   avg_score DECIMAL(4, 2) NOT NULL DEFAULT 0.00,
   total_scores INTEGER NOT NULL DEFAULT 0,
+  hire_inclination_pct DECIMAL(5, 2),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -205,27 +209,61 @@ CREATE INDEX IF NOT EXISTS idx_strength_scores_seeker ON public.strength_scores(
 -- ---------------------------------------------------------------------
 
 -- Cumulative strength score: SUM(score * weight) / COUNT(DISTINCT referrer)
+-- Helper: compute % of referrers who said yes/strong_yes for a seeker.
+CREATE OR REPLACE FUNCTION public.get_hire_inclination_pct(seeker_uuid UUID)
+RETURNS DECIMAL(5, 2) AS $$
+  SELECT COALESCE(
+    ROUND(
+      100.0 * COUNT(*) FILTER (WHERE hire_inclination IN ('yes', 'strong_yes')) /
+      NULLIF(COUNT(*) FILTER (WHERE hire_inclination IS NOT NULL), 0),
+      0
+    ),
+    NULL
+  )
+  FROM public.referral_requests
+  WHERE seeker_id = seeker_uuid AND status = 'scored';
+$$ LANGUAGE sql SECURITY DEFINER;
+
+-- Karma score = 65% weighted param average + 35% hire inclination average.
+-- Inclination mapping: strong_yes=10, yes=7.5, neutral=5, no=2.5, strong_no=0.
+-- Falls back to param average only when no inclination data exists.
 CREATE OR REPLACE FUNCTION public.calculate_strength_score(seeker_uuid UUID)
 RETURNS DECIMAL(4, 2) AS $$
 DECLARE
-  total_weighted DECIMAL(10, 2);
-  unique_referrers INTEGER;
+  param_avg    DECIMAL(10, 4);
+  incl_avg     DECIMAL(10, 4);
+  unique_refs  INTEGER;
 BEGIN
   SELECT COALESCE(SUM(s.score * sp.weight), 0.00)
-    INTO total_weighted
+    INTO param_avg
   FROM public.scores s
   JOIN public.scoring_parameters sp ON s.parameter_id = sp.id
   WHERE s.seeker_id = seeker_uuid AND sp.is_active = TRUE;
 
   SELECT COUNT(DISTINCT s.referrer_id)
-    INTO unique_referrers
+    INTO unique_refs
   FROM public.scores s
   WHERE s.seeker_id = seeker_uuid;
 
-  IF unique_referrers > 0 THEN
-    RETURN ROUND(total_weighted / unique_referrers, 2);
+  IF unique_refs = 0 THEN RETURN 0.00; END IF;
+  param_avg := param_avg / unique_refs;
+
+  SELECT AVG(
+    CASE hire_inclination
+      WHEN 'strong_yes' THEN 10.0
+      WHEN 'yes'        THEN 7.5
+      WHEN 'neutral'    THEN 5.0
+      WHEN 'no'         THEN 2.5
+      WHEN 'strong_no'  THEN 0.0
+    END
+  ) INTO incl_avg
+  FROM public.referral_requests
+  WHERE seeker_id = seeker_uuid AND status = 'scored' AND hire_inclination IS NOT NULL;
+
+  IF incl_avg IS NOT NULL THEN
+    RETURN ROUND((0.65 * param_avg + 0.35 * incl_avg)::NUMERIC, 2);
   END IF;
-  RETURN 0.00;
+  RETURN ROUND(param_avg::NUMERIC, 2);
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
@@ -310,7 +348,8 @@ RETURNS TABLE (
   strength_score DECIMAL(4, 2),
   total_scores INTEGER,
   expected_ctc INTEGER,
-  current_ctc INTEGER
+  current_ctc INTEGER,
+  hire_inclination_pct DECIMAL(5, 2)
 ) AS $$
 BEGIN
   RETURN QUERY
@@ -322,7 +361,8 @@ BEGIN
     COALESCE(ss.avg_score, 0.00),
     COALESCE(ss.total_scores, 0),
     jr."expectedCtc",
-    jr."currentCtc"
+    jr."currentCtc",
+    ss.hire_inclination_pct
   FROM public.job_postings jp
   JOIN public.job_requirements jr
     ON jr.type = 'seeker'
@@ -336,6 +376,7 @@ BEGIN
     AND (jp.salary_min IS NULL OR jr."expectedCtc" IS NULL OR jr."expectedCtc" >= jp.salary_min - 200000)
     AND (jp.salary_max IS NULL OR jr."expectedCtc" IS NULL OR jr."expectedCtc" <= jp.salary_max + 200000)
   ORDER BY COALESCE(ss.avg_score, 0.00) DESC,
+           COALESCE(ss.hire_inclination_pct, 0) DESC,
            COALESCE(ss.total_scores, 0) DESC,
            jr."yearsOfExperience" DESC
   LIMIT limit_count;
@@ -367,6 +408,7 @@ RETURNS TRIGGER AS $$
 BEGIN
   UPDATE public.strength_scores ss
   SET avg_score = COALESCE(public.calculate_strength_score(NEW.seeker_id), 0.00),
+      hire_inclination_pct = public.get_hire_inclination_pct(NEW.seeker_id),
       total_scores = (
         SELECT COUNT(DISTINCT s.referrer_id)
         FROM public.scores s
@@ -377,6 +419,26 @@ BEGIN
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Re-compute strength score when a referrer submits hire inclination.
+CREATE OR REPLACE FUNCTION public.update_strength_scores_on_inclination()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.hire_inclination IS DISTINCT FROM OLD.hire_inclination AND NEW.seeker_id IS NOT NULL THEN
+    UPDATE public.strength_scores ss
+    SET avg_score = COALESCE(public.calculate_strength_score(NEW.seeker_id), 0.00),
+        hire_inclination_pct = public.get_hire_inclination_pct(NEW.seeker_id),
+        updated_at = NOW()
+    WHERE ss.seeker_id = NEW.seeker_id;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS trg_update_strength_scores_on_inclination ON public.referral_requests;
+CREATE TRIGGER trg_update_strength_scores_on_inclination
+  AFTER UPDATE ON public.referral_requests
+  FOR EACH ROW EXECUTE FUNCTION public.update_strength_scores_on_inclination();
 
 DROP TRIGGER IF EXISTS trg_update_strength_scores_on_score ON public.scores;
 CREATE TRIGGER trg_update_strength_scores_on_score

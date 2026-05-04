@@ -125,6 +125,8 @@ export type Database = {
           slot_id: string | null;
           interview_at: string | null;
           meet_link: string | null;
+          hire_inclination: string | null;
+          resume_url: string | null;
           created_at: string | null;
           updated_at: string | null;
         };
@@ -139,6 +141,8 @@ export type Database = {
           slot_id?: string | null;
           interview_at?: string | null;
           meet_link?: string | null;
+          hire_inclination?: string | null;
+          resume_url?: string | null;
           created_at?: string | null;
           updated_at?: string | null;
         };

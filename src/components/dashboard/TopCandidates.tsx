@@ -158,6 +158,26 @@ export const TopCandidates = ({ user, jobPostingId, onClose }: TopCandidatesProp
                 <div style={{ fontSize: 13, color: "var(--ink-2)", marginBottom: 6 }}>
                   {roleLabel} · {c.seeker_experience} yrs exp · {c.total_scores} review{c.total_scores !== 1 ? "s" : ""}
                 </div>
+                {c.hire_inclination_pct != null && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+                    <div style={{
+                      height: 6, width: 80, borderRadius: 999,
+                      background: "var(--surface-3)", overflow: "hidden",
+                    }}>
+                      <div style={{
+                        height: "100%", borderRadius: 999,
+                        background: c.hire_inclination_pct >= 70 ? "#059669" : c.hire_inclination_pct >= 40 ? "#2563eb" : "#d97706",
+                        width: `${c.hire_inclination_pct}%`,
+                      }} />
+                    </div>
+                    <span style={{
+                      fontSize: 11, fontWeight: 700,
+                      color: c.hire_inclination_pct >= 70 ? "#059669" : c.hire_inclination_pct >= 40 ? "#2563eb" : "#d97706",
+                    }}>
+                      {Math.round(c.hire_inclination_pct)}% hire inclination
+                    </span>
+                  </div>
+                )}
                 <div style={{ display: "flex", gap: 16 }}>
                   {[["Current CTC", fmtCtc(c.current_ctc)], ["Expected CTC", fmtCtc(c.expected_ctc)]].map(([l, v]) => (
                     <div key={l}>
@@ -221,8 +241,8 @@ export const TopCandidates = ({ user, jobPostingId, onClose }: TopCandidatesProp
       }}>
         <div style={{ fontSize: 12, fontWeight: 600, color: "var(--seeker)", marginBottom: 8 }}>How karma scores work</div>
         <ul style={{ fontSize: 12, color: "var(--ink-3)", lineHeight: 1.7, paddingLeft: 14 }}>
-          <li>Candidates are scored by experienced professionals in their field</li>
-          <li>Scores reflect technical ability, communication, and culture fit</li>
+          <li>Karma score = 65% technical/soft skills + 35% referrer hire inclination</li>
+          <li>% hire inclination = share of referrers who said yes or strong yes</li>
           <li>Show interest first; unlock contact when you're ready to reach out</li>
         </ul>
       </div>

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Award, CalendarCheck, CheckCircle, Clock, FileText, Star } from "lucide-react";
+import { Award, CalendarCheck, CheckCircle, Clock, FileText, Star, Lock, ThumbsUp, ThumbsDown } from "lucide-react";
 import { User, useAuthStore } from "@/stores/authStore";
 import { useReferralStore } from "@/stores/referralStore";
 import { JOB_ROLES } from "@/constants/roles";
@@ -22,10 +22,14 @@ export const ReferrerDashboard = ({ user, activeTab, onTabChange }: ReferrerDash
   const {
     fetchReferralRequests, fetchScoringParameters, createScore,
     referralRequests, scoringParameters, saveCalendlyUrl,
+    setInterviewAt, submitHireInclination,
   } = useReferralStore();
   const [scores, setScores] = useState<Record<string, Record<string, number | "">>>({});
   const [comments, setComments] = useState<Record<string, string>>({});
+  const [inclinations, setInclinations] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState<Set<string>>(new Set());
+  const [interviewTimeInputs, setInterviewTimeInputs] = useState<Record<string, string>>({});
+  const [savingInterviewTime, setSavingInterviewTime] = useState<Set<string>>(new Set());
 
   // Read directly from the store so the embed updates immediately when the
   // CalendlySetupModal saves and calls updateUser — no page refresh needed.
@@ -104,6 +108,31 @@ export const ReferrerDashboard = ({ user, activeTab, onTabChange }: ReferrerDash
     }
   };
 
+  const canScore = (req: { interview_at?: string | null }): boolean => {
+    if (!req.interview_at) return false;
+    return Date.now() >= new Date(req.interview_at).getTime() + 30 * 60 * 1000;
+  };
+
+  const scoringUnlocksAt = (req: { interview_at?: string | null }): string | null => {
+    if (!req.interview_at) return null;
+    const t = new Date(new Date(req.interview_at).getTime() + 30 * 60 * 1000);
+    return t.toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+  };
+
+  const handleSaveInterviewTime = async (reqId: string) => {
+    const val = interviewTimeInputs[reqId];
+    if (!val) return;
+    setSavingInterviewTime(s => new Set(s).add(reqId));
+    try {
+      await setInterviewAt(reqId, new Date(val).toISOString());
+      toast.success("Interview time saved");
+    } catch {
+      toast.error("Failed to save interview time");
+    } finally {
+      setSavingInterviewTime(s => { const n = new Set(s); n.delete(reqId); return n; });
+    }
+  };
+
   const handleScoreChange = (reqId: string, paramId: string, value: number | "") => {
     if (value !== "" && (value < 0 || value > 10)) return;
     setScores((prev) => ({ ...prev, [reqId]: { ...prev[reqId], [paramId]: value } }));
@@ -117,11 +146,16 @@ export const ReferrerDashboard = ({ user, activeTab, onTabChange }: ReferrerDash
       toast.error(`Please score: ${missing.map((m) => m.name).join(", ")}`);
       return;
     }
+    if (!inclinations[requestId]) {
+      toast.error("Please select your hire inclination before submitting.");
+      return;
+    }
     const request = myRequests.find((r) => r.id === requestId);
     if (!request) return;
 
     setSubmitting((s) => new Set(s).add(requestId));
     try {
+      await submitHireInclination(requestId, inclinations[requestId]);
       await Promise.all(
         Object.entries(reqScores).map(([parameterId, score]) => {
           if (typeof score !== "number") throw new Error("Invalid score");
@@ -138,6 +172,7 @@ export const ReferrerDashboard = ({ user, activeTab, onTabChange }: ReferrerDash
       toast.success("Scores submitted!");
       setScores((prev) => { const n = { ...prev }; delete n[requestId]; return n; });
       setComments((prev) => { const n = { ...prev }; delete n[requestId]; return n; });
+      setInclinations((prev) => { const n = { ...prev }; delete n[requestId]; return n; });
       await fetchReferralRequests(user.id);
     } catch {
       toast.error("Failed to submit. Try again.");
@@ -175,6 +210,11 @@ export const ReferrerDashboard = ({ user, activeTab, onTabChange }: ReferrerDash
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {scheduledSorted.map((r) => {
                 const profile = seekerProfiles[r.seeker_id];
+                const scoreOk = canScore(r);
+                const unlockTime = scoringUnlocksAt(r);
+                const savedTime = r.interview_at
+                  ? new Date(r.interview_at).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })
+                  : null;
                 return (
                   <div
                     key={r.id}
@@ -197,20 +237,57 @@ export const ReferrerDashboard = ({ user, activeTab, onTabChange }: ReferrerDash
                         <div style={{ fontSize: 12, color: "var(--ink-4)", marginTop: 6 }}>
                           Booked on {new Date(r.created_at ?? Date.now()).toLocaleDateString()}
                         </div>
+                        {/* Interview time setter */}
+                        {!r.interview_at ? (
+                          <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                            <span style={{ fontSize: 12, color: "var(--ink-3)" }}>Set interview time:</span>
+                            <input
+                              type="datetime-local"
+                              value={interviewTimeInputs[r.id] ?? ""}
+                              onChange={e => setInterviewTimeInputs(p => ({ ...p, [r.id]: e.target.value }))}
+                              style={{
+                                fontSize: 12, padding: "4px 8px", borderRadius: 7,
+                                border: "1px solid var(--border-med)",
+                                background: "var(--surface)", color: "var(--ink)",
+                                fontFamily: "inherit",
+                              }}
+                            />
+                            <button
+                              onClick={() => handleSaveInterviewTime(r.id)}
+                              disabled={!interviewTimeInputs[r.id] || savingInterviewTime.has(r.id)}
+                              style={{ ...secondaryBtnStyle, height: 28, padding: "0 10px", fontSize: 12 }}
+                            >
+                              {savingInterviewTime.has(r.id) ? "Saving…" : "Save"}
+                            </button>
+                          </div>
+                        ) : (
+                          <div style={{ marginTop: 8, fontSize: 12, color: scoreOk ? "#059669" : "var(--ink-3)" }}>
+                            {scoreOk
+                              ? `Interview on ${savedTime} — scoring unlocked`
+                              : `Interview: ${savedTime} — scoring unlocks at ${unlockTime}`}
+                          </div>
+                        )}
                       </div>
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                         <button
-                          onClick={() => (r as any).resume_url && window.open((r as any).resume_url, "_blank")}
-                          disabled={!(r as any).resume_url}
-                          style={{ ...secondaryBtnStyle, opacity: (r as any).resume_url ? 1 : 0.45 }}
+                          onClick={() => r.resume_url && window.open(r.resume_url, "_blank")}
+                          disabled={!r.resume_url}
+                          style={{ ...secondaryBtnStyle, opacity: r.resume_url ? 1 : 0.45 }}
                         >
                           <FileText size={13} /> View Resume
                         </button>
                         <button
-                          onClick={() => onTabChange("reviews")}
-                          style={{ ...primaryBtnStyle, padding: "0 14px", height: 34, borderRadius: 8, gap: 6 }}
+                          onClick={() => scoreOk && onTabChange("reviews")}
+                          disabled={!scoreOk}
+                          title={!r.interview_at ? "Set interview time to unlock scoring" : !scoreOk ? `Unlocks at ${unlockTime}` : undefined}
+                          style={{
+                            ...primaryBtnStyle, padding: "0 14px", height: 34, borderRadius: 8, gap: 6,
+                            opacity: scoreOk ? 1 : 0.45,
+                            cursor: scoreOk ? "pointer" : "not-allowed",
+                          }}
                         >
-                          <Star size={13} /> Score Candidate
+                          {scoreOk ? <Star size={13} /> : <Lock size={13} />}
+                          {scoreOk ? "Score Candidate" : "Locked"}
                         </button>
                       </div>
                     </div>
@@ -423,6 +500,42 @@ export const ReferrerDashboard = ({ user, activeTab, onTabChange }: ReferrerDash
                     outline: "none", resize: "vertical", lineHeight: 1.5,
                   }}
                 />
+              </div>
+
+              {/* Hire inclination selector */}
+              <div style={{ marginBottom: 18 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--ink-2)", marginBottom: 10 }}>
+                  Would you hire this candidate? <span style={{ color: "#dc2626" }}>*</span>
+                </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {([
+                    { value: "strong_yes", label: "Strong Yes", bg: "#059669", light: "#ecfdf5", border: "#a7f3d0" },
+                    { value: "yes",        label: "Yes",         bg: "#2563eb", light: "#eff6ff", border: "#bfdbfe" },
+                    { value: "neutral",    label: "Neutral",     bg: "#6b7280", light: "#f9fafb", border: "#e5e7eb" },
+                    { value: "no",         label: "No",          bg: "#d97706", light: "#fffbeb", border: "#fde68a" },
+                    { value: "strong_no",  label: "Strong No",   bg: "#dc2626", light: "#fef2f2", border: "#fecaca" },
+                  ] as const).map(opt => {
+                    const selected = inclinations[req.id] === opt.value;
+                    return (
+                      <button
+                        key={opt.value}
+                        onClick={() => setInclinations(p => ({ ...p, [req.id]: opt.value }))}
+                        style={{
+                          padding: "6px 14px", borderRadius: 9, fontSize: 13, fontWeight: 600,
+                          cursor: "pointer", fontFamily: "inherit",
+                          background: selected ? opt.bg : opt.light,
+                          color: selected ? "white" : opt.bg,
+                          border: `1.5px solid ${selected ? opt.bg : opt.border}`,
+                          transition: "all 0.15s",
+                        }}
+                      >
+                        {opt.value === "strong_yes" && <ThumbsUp size={12} style={{ display: "inline", marginRight: 5 }} />}
+                        {opt.value === "strong_no"  && <ThumbsDown size={12} style={{ display: "inline", marginRight: 5 }} />}
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
               <button
