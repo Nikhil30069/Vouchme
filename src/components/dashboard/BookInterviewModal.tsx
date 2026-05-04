@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Clock, Users, X } from "lucide-react";
 import { useReferralStore } from "@/stores/referralStore";
+import { useAuthStore } from "@/stores/authStore";
 import { JOB_ROLES } from "@/constants/roles";
 import { primaryBtnStyle } from "./SeekerDashboard";
 
@@ -36,6 +37,8 @@ export const BookInterviewModal = ({
   onBooked,
 }: BookInterviewModalProps) => {
   const { findEligibleReferrersForJob, fetchCalendlyUrls, bookSlot, eligibleReferrers } = useReferralStore();
+  const seekerEmail = useAuthStore((s) => s.user?.email ?? "");
+  const seekerName = useAuthStore((s) => s.user?.name ?? "");
   const [referrers, setReferrers] = useState<ReferrerWithCalendly[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedReferrer, setSelectedReferrer] = useState<ReferrerWithCalendly | null>(null);
@@ -219,7 +222,7 @@ export const BookInterviewModal = ({
                   {isSelected && r.calendly_url && (
                     <div style={{ borderTop: "1px solid var(--border-soft)", overflow: "hidden" }}>
                       <iframe
-                        src={`${r.calendly_url}?hide_gdpr_banner=1&primary_color=2563eb&embed_type=Inline`}
+                        src={`${r.calendly_url}?hide_gdpr_banner=1&primary_color=2563eb&embed_type=Inline&email=${encodeURIComponent(seekerEmail)}&name=${encodeURIComponent(seekerName)}`}
                         width="100%"
                         height="580"
                         frameBorder="0"
