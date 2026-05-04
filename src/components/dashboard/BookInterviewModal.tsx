@@ -41,17 +41,6 @@ export const BookInterviewModal = ({
   const [selectedReferrer, setSelectedReferrer] = useState<ReferrerWithCalendly | null>(null);
   const [booked, setBooked] = useState(false);
 
-  useEffect(() => {
-    if (document.querySelector('script[src*="calendly"]')) return;
-    const link = document.createElement('link');
-    link.href = 'https://assets.calendly.com/assets/external/widget.css';
-    link.rel = 'stylesheet';
-    document.head.appendChild(link);
-    const script = document.createElement('script');
-    script.src = 'https://assets.calendly.com/assets/external/widget.js';
-    script.async = true;
-    document.head.appendChild(script);
-  }, []);
 
   useEffect(() => {
     if (!isOpen || !jobRequirementId) return;
@@ -228,11 +217,14 @@ export const BookInterviewModal = ({
                   </div>
 
                   {isSelected && r.calendly_url && (
-                    <div style={{ marginTop: 0, borderRadius: 0, overflow: "hidden", borderTop: "1px solid var(--border-soft)" }}>
-                      <div
-                        className="calendly-inline-widget"
-                        data-url={`${r.calendly_url}?hide_gdpr_banner=1&primary_color=2563eb`}
-                        style={{ minWidth: 300, height: 580 }}
+                    <div style={{ borderTop: "1px solid var(--border-soft)", overflow: "hidden" }}>
+                      <iframe
+                        src={`${r.calendly_url}?hide_gdpr_banner=1&primary_color=2563eb&embed_type=Inline`}
+                        width="100%"
+                        height="580"
+                        frameBorder="0"
+                        title="Book a time"
+                        allow="payment"
                       />
                     </div>
                   )}
