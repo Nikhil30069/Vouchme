@@ -81,34 +81,54 @@ export const BookInterviewModal = ({
   }, [eligibleReferrers]);
 
   useEffect(() => {
-    const handler = async (e: MessageEvent) => {
-      // Log every postMessage to trace Calendly events
-      if (e.origin?.includes('calendly')) {
-        console.log('[BookInterview] calendly msg:', e.data?.event, e.data);
-      }
-      if (e.data?.event !== 'calendly.event_scheduled') return;
-      console.log('[BookInterview] event_scheduled received, selectedReferrer:', selectedReferrer?.referrer_id, 'booked:', booked);
-      if (!selectedReferrer || booked) return;
+    // Avoid double-calls when both Calendly's event_scheduled fires and our
+    // calendly-success.html redirect posts back the start time.
+    let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
+    let didBook = false;
+
+    const doBook = async (interviewAt?: string) => {
+      if (!selectedReferrer || didBook) return;
+      didBook = true;
+      if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = null; }
       setBooked(true);
       try {
-        console.log('[BookInterview] calling bookSlot...');
         await bookSlot({
           seekerId,
           referrerId: selectedReferrer.referrer_id,
           jobRequirementId,
           jobRole,
           seekerExperience: jobExperience,
+          interviewAt,
         });
-        console.log('[BookInterview] bookSlot succeeded ✓');
       } catch (err: any) {
         console.error('[BookInterview] bookSlot failed:', err);
         toast.error(err?.message ?? 'Failed to save booking — please contact support.');
         setBooked(false);
+        didBook = false;
       }
     };
+
+    const handler = async (e: MessageEvent) => {
+      // Path A — our redirect page (same origin) posts event details back.
+      if (e.data?.type === 'calendly_booked' && e.data?.data) {
+        const startTime = e.data.data.event_start_time;
+        await doBook(typeof startTime === 'string' && startTime ? startTime : undefined);
+        return;
+      }
+      // Path B — Calendly's iframe fires event_scheduled but doesn't include
+      // the time. Schedule a fallback insert in case the redirect never lands
+      // (event type misconfigured, network, popup blocker, etc.).
+      if (e.data?.event !== 'calendly.event_scheduled') return;
+      if (!selectedReferrer || didBook) return;
+      if (fallbackTimer) clearTimeout(fallbackTimer);
+      fallbackTimer = setTimeout(() => { doBook(undefined); }, 3500);
+    };
     window.addEventListener('message', handler);
-    return () => window.removeEventListener('message', handler);
-  }, [selectedReferrer, booked, seekerId, jobRequirementId, jobRole, jobExperience]);
+    return () => {
+      window.removeEventListener('message', handler);
+      if (fallbackTimer) clearTimeout(fallbackTimer);
+    };
+  }, [selectedReferrer, seekerId, jobRequirementId, jobRole, jobExperience, bookSlot]);
 
   if (!isOpen) return null;
 
@@ -233,7 +253,7 @@ export const BookInterviewModal = ({
                   {isSelected && r.calendly_url && (
                     <div style={{ borderTop: "1px solid var(--border-soft)", overflow: "hidden" }}>
                       <iframe
-                        src={`${r.calendly_url}?hide_gdpr_banner=1&primary_color=2563eb&embed_type=Inline&embed_domain=${encodeURIComponent(window.location.hostname)}&email=${encodeURIComponent(seekerEmail)}&name=${encodeURIComponent(seekerName)}`}
+                        src={`${r.calendly_url}?hide_gdpr_banner=1&primary_color=2563eb&embed_type=Inline&embed_domain=${encodeURIComponent(window.location.hostname)}&email=${encodeURIComponent(seekerEmail)}&name=${encodeURIComponent(seekerName)}&redirect_url=${encodeURIComponent(`${window.location.origin}/calendly-success.html`)}`}
                         width="100%"
                         height="580"
                         frameBorder="0"

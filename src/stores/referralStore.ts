@@ -72,6 +72,7 @@ interface ReferralState {
     jobRequirementId: string;
     jobRole: string;
     seekerExperience: number;
+    interviewAt?: string;
   }) => Promise<void>;
   saveCalendlyUrl: (userId: string, url: string) => Promise<void>;
   fetchCalendlyUrls: (userIds: string[]) => Promise<Record<string, string | null>>;
@@ -678,15 +679,17 @@ export const useReferralStore = create<ReferralState>((set, get) => ({
     if (slot) await get().fetchReferrerSlots(slot.referrer_id);
   },
 
-  bookSlot: async ({ seekerId, referrerId, jobRequirementId, jobRole, seekerExperience }) => {
-    const { error: rrErr } = await supabase.from('referral_requests').insert({
+  bookSlot: async ({ seekerId, referrerId, jobRequirementId, jobRole, seekerExperience, interviewAt }) => {
+    const payload: Record<string, any> = {
       seeker_id: seekerId,
       referrer_id: referrerId,
       job_requirement_id: jobRequirementId,
       job_role: jobRole,
       seeker_experience_years: seekerExperience,
       status: 'pending',
-    });
+    };
+    if (interviewAt) payload.interview_at = interviewAt;
+    const { error: rrErr } = await supabase.from('referral_requests').insert(payload);
     if (rrErr) throw rrErr;
     await get().fetchReferralRequests(seekerId);
   },

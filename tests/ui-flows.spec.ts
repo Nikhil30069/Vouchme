@@ -649,22 +649,20 @@ test("22. Book Interview — clicking referrer shows Calendly iframe", async ({ 
   console.log("✅ 22. Book Interview iframe loads with pre-filled email/name");
 });
 
-// ── 23. Book Interview — postMessage triggers booking, shows success ───────
+// ── 23. Book Interview — redirect-page postMessage auto-fills interview_at ─
 
-test("23. Book Interview — calendly.event_scheduled triggers DB insert + success state", async ({ page }) => {
-  let insertCaptured = false;
+test("23. Book Interview — calendly_booked redirect saves interview_at automatically", async ({ page }) => {
+  let insertBody: any = null;
 
   await interceptSupabaseWithBooking(page);
 
-  // Capture the POST to referral_requests
   await page.route(`${SUPABASE}/rest/v1/referral_requests*`, async (route) => {
     if (route.request().method() === "POST") {
-      insertCaptured = true;
-      const body = JSON.parse(route.request().postData() ?? "{}");
-      expect(body.seeker_id).toBe("mock-user-id");
-      expect(body.referrer_id).toBe("ref-calendly-1");
-      expect(body.status).toBe("pending");
-      expect(body.job_role).toBe("software-developer");
+      insertBody = JSON.parse(route.request().postData() ?? "{}");
+      expect(insertBody.seeker_id).toBe("mock-user-id");
+      expect(insertBody.referrer_id).toBe("ref-calendly-1");
+      expect(insertBody.status).toBe("pending");
+      expect(insertBody.job_role).toBe("software-developer");
       await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({}) });
     } else {
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(allRequests) });
@@ -684,21 +682,29 @@ test("23. Book Interview — calendly.event_scheduled triggers DB insert + succe
   await page.locator("button:has-text('Book Interview')").first().click();
   await page.waitForTimeout(800);
 
-  // Iframe should be visible; simulate Calendly postMessage
   await expect(page.locator("iframe[title='Book a time']")).toBeVisible();
 
-  await page.evaluate(() => {
-    window.postMessage({ event: "calendly.event_scheduled" }, "*");
-  });
+  // Simulate the postMessage that calendly-success.html sends back after the
+  // Calendly redirect lands on our origin with event_start_time in the URL.
+  const eventStart = "2026-05-15T10:00:00.000000Z";
+  await page.evaluate((startTime) => {
+    window.postMessage({
+      type: "calendly_booked",
+      data: {
+        event_start_time: startTime,
+        event_end_time: "2026-05-15T10:30:00.000000Z",
+        invitee_email: "test@example.com",
+      },
+    }, "*");
+  }, eventStart);
 
-  // Wait for async bookSlot call + state update
-  await page.waitForTimeout(2000);
+  await page.waitForTimeout(1500);
   await screenshot(page, "23-book-interview-success");
 
-  // "Interview booked!" confirmation state
   await expect(page.locator("text=Interview booked!")).toBeVisible();
-  expect(insertCaptured).toBe(true);
-  console.log("✅ 23. calendly.event_scheduled triggers insert + shows success screen");
+  expect(insertBody).not.toBeNull();
+  expect(insertBody.interview_at).toBe(eventStart);
+  console.log("✅ 23. calendly_booked redirect → bookSlot insert with interview_at");
 });
 
 // ── 24. Referrer Upcoming Interviews — shows pending requests ─────────────
@@ -1089,4 +1095,108 @@ test("37. Algorithm — blended score (65% param + 35% inclination) ranks candid
   await expect(page.getByText("100% hire inclination", { exact: true })).toBeVisible();
   await expect(page.getByText("0% hire inclination", { exact: true })).toBeVisible();
   console.log("✅ 37. Algorithm ranking: strong_yes lifts score, strong_no depresses it");
+});
+
+// ── 38. Book Interview — fallback when redirect doesn't fire ─────────────
+
+test("38. Book Interview — event_scheduled fallback inserts without interview_at", async ({ page }) => {
+  let insertBody: any = null;
+
+  await interceptSupabaseWithBooking(page);
+
+  await page.route(`${SUPABASE}/rest/v1/referral_requests*`, async (route) => {
+    if (route.request().method() === "POST") {
+      insertBody = JSON.parse(route.request().postData() ?? "{}");
+      await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({}) });
+    } else {
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(allRequests) });
+    }
+  });
+
+  await page.goto(BASE);
+  await injectMockSession(page);
+  await setDashboardState(page, "seeker");
+  await page.reload();
+  await page.waitForSelector("text=Overview", { timeout: 10000 });
+
+  await sidebarBtn(page, "My Requirements").click();
+  await page.waitForTimeout(400);
+  await page.locator("button:has-text('Book an interview')").first().click();
+  await page.waitForTimeout(1500);
+  await page.locator("button:has-text('Book Interview')").first().click();
+  await page.waitForTimeout(800);
+
+  await expect(page.locator("iframe[title='Book a time']")).toBeVisible();
+
+  // Only event_scheduled fires (no redirect postMessage). Fallback timer (3.5s)
+  // should still create the booking, but without interview_at — the referrer
+  // can set it manually.
+  await page.evaluate(() => {
+    window.postMessage({ event: "calendly.event_scheduled" }, "*");
+  });
+
+  await page.waitForTimeout(4500);
+  await screenshot(page, "38-book-fallback");
+
+  await expect(page.locator("text=Interview booked!")).toBeVisible();
+  expect(insertBody).not.toBeNull();
+  expect(insertBody.interview_at).toBeUndefined();
+  console.log("✅ 38. event_scheduled fallback fires bookSlot without interview_at");
+});
+
+// ── 39. Book Interview — redirect race wins over fallback ─────────────────
+
+test("39. Book Interview — redirect arrives before fallback, only one insert", async ({ page }) => {
+  let insertCount = 0;
+  let insertBody: any = null;
+
+  await interceptSupabaseWithBooking(page);
+
+  await page.route(`${SUPABASE}/rest/v1/referral_requests*`, async (route) => {
+    if (route.request().method() === "POST") {
+      insertCount++;
+      insertBody = JSON.parse(route.request().postData() ?? "{}");
+      await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({}) });
+    } else {
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(allRequests) });
+    }
+  });
+
+  await page.goto(BASE);
+  await injectMockSession(page);
+  await setDashboardState(page, "seeker");
+  await page.reload();
+  await page.waitForSelector("text=Overview", { timeout: 10000 });
+
+  await sidebarBtn(page, "My Requirements").click();
+  await page.waitForTimeout(400);
+  await page.locator("button:has-text('Book an interview')").first().click();
+  await page.waitForTimeout(1500);
+  await page.locator("button:has-text('Book Interview')").first().click();
+  await page.waitForTimeout(800);
+
+  await expect(page.locator("iframe[title='Book a time']")).toBeVisible();
+
+  // event_scheduled fires first (starts 3.5s fallback timer), then redirect
+  // arrives shortly after with the time. Only ONE insert should happen, with
+  // interview_at populated.
+  await page.evaluate(() => {
+    window.postMessage({ event: "calendly.event_scheduled" }, "*");
+  });
+  await page.waitForTimeout(300);
+  const startTime = "2026-06-01T14:30:00.000000Z";
+  await page.evaluate((t) => {
+    window.postMessage({
+      type: "calendly_booked",
+      data: { event_start_time: t },
+    }, "*");
+  }, startTime);
+
+  // Wait long enough for the fallback timer to have fired if it weren't cancelled.
+  await page.waitForTimeout(4500);
+
+  await expect(page.locator("text=Interview booked!")).toBeVisible();
+  expect(insertCount).toBe(1);
+  expect(insertBody.interview_at).toBe(startTime);
+  console.log("✅ 39. Redirect cancels fallback — single insert with interview_at");
 });
