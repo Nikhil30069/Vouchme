@@ -1,11 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { createPortal } from "react-dom";
-import { Clock, Users, X } from "lucide-react";
-import { useReferralStore } from "@/stores/referralStore";
-import { useAuthStore } from "@/stores/authStore";
+import { Calendar, Clock, Users, X } from "lucide-react";
+import { useReferralStore, type AvailableSlot } from "@/stores/referralStore";
 import { JOB_ROLES } from "@/constants/roles";
-import { primaryBtnStyle } from "./SeekerDashboard";
+import { primaryBtnStyle, secondaryBtnStyle } from "./SeekerDashboard";
 
 interface BookInterviewModalProps {
   isOpen: boolean;
@@ -17,16 +16,26 @@ interface BookInterviewModalProps {
   onBooked: () => void;
 }
 
-interface ReferrerWithCalendly {
+interface EligibleReferrer {
   referrer_id: string;
   referrer_name: string;
   referrer_role: string;
   referrer_experience: number;
   organization: string | null;
-  calendly_url: string | null;
+}
+
+interface BookedResult {
+  interview_at: string;
+  meet_link: string | null;
 }
 
 const roleLabel = (value: string) => JOB_ROLES.find((r) => r.value === value)?.label ?? value;
+
+const fmtDay = (iso: string) =>
+  new Date(iso).toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+const fmtTime = (iso: string) =>
+  new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+const dayKey = (iso: string) => iso.slice(0, 10); // group by UTC date for stability
 
 export const BookInterviewModal = ({
   isOpen,
@@ -34,101 +43,95 @@ export const BookInterviewModal = ({
   jobRequirementId,
   jobRole,
   jobExperience,
-  seekerId,
+  seekerId: _seekerId,
   onBooked,
 }: BookInterviewModalProps) => {
-  const { findEligibleReferrersForJob, fetchCalendlyUrls, bookSlot, eligibleReferrers } = useReferralStore();
-  const seekerEmail = useAuthStore((s) => s.user?.email ?? "");
-  const seekerName = useAuthStore((s) => s.user?.name ?? "");
-  const [referrers, setReferrers] = useState<ReferrerWithCalendly[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [selectedReferrer, setSelectedReferrer] = useState<ReferrerWithCalendly | null>(null);
-  const [booked, setBooked] = useState(false);
+  const { findEligibleReferrersForJob, fetchAvailableSlots, bookCalendarSlot, eligibleReferrers } = useReferralStore();
+  const [loadingReferrers, setLoadingReferrers] = useState(false);
+  const [selectedReferrer, setSelectedReferrer] = useState<EligibleReferrer | null>(null);
+  const [slots, setSlots] = useState<AvailableSlot[]>([]);
+  const [slotsLoading, setSlotsLoading] = useState(false);
+  const [slotsError, setSlotsError] = useState<string | null>(null);
+  const [pendingSlot, setPendingSlot] = useState<string | null>(null);
+  const [booking, setBooking] = useState(false);
+  const [booked, setBooked] = useState<BookedResult | null>(null);
 
-
+  // Reset state every time the modal opens.
   useEffect(() => {
-    if (!isOpen || !jobRequirementId) return;
-    const load = async () => {
-      setLoading(true);
-      setReferrers([]);
-      setSelectedReferrer(null);
-      setBooked(false);
-      try {
-        await findEligibleReferrersForJob(jobRequirementId);
-      } finally {
-        setLoading(false);
-      }
-    };
-    load();
-  }, [isOpen, jobRequirementId]);
+    if (!isOpen) return;
+    setSelectedReferrer(null);
+    setSlots([]);
+    setSlotsError(null);
+    setPendingSlot(null);
+    setBooked(null);
+    setBooking(false);
+    if (!jobRequirementId) return;
+    setLoadingReferrers(true);
+    findEligibleReferrersForJob(jobRequirementId).finally(() => setLoadingReferrers(false));
+  }, [isOpen, jobRequirementId, findEligibleReferrersForJob]);
 
-  useEffect(() => {
-    if (!eligibleReferrers.length) return;
-    const loadUrls = async () => {
-      const ids = eligibleReferrers.map((r) => r.referrer_id);
-      const urlMap = await fetchCalendlyUrls(ids);
-      const result: ReferrerWithCalendly[] = eligibleReferrers.map((r) => ({
+  const referrers: EligibleReferrer[] = useMemo(
+    () =>
+      eligibleReferrers.map((r) => ({
         referrer_id: r.referrer_id,
         referrer_name: r.referrer_name,
         referrer_role: r.referrer_role,
         referrer_experience: r.referrer_experience,
         organization: r.organization ?? null,
-        calendly_url: urlMap[r.referrer_id] ?? null,
-      }));
-      setReferrers(result);
-    };
-    loadUrls();
-  }, [eligibleReferrers]);
+      })),
+    [eligibleReferrers],
+  );
 
-  useEffect(() => {
-    // Avoid double-calls when both Calendly's event_scheduled fires and our
-    // calendly-success.html redirect posts back the start time.
-    let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
-    let didBook = false;
+  const loadSlots = async (r: EligibleReferrer) => {
+    setSelectedReferrer(r);
+    setSlots([]);
+    setSlotsError(null);
+    setSlotsLoading(true);
+    try {
+      const result = await fetchAvailableSlots(r.referrer_id);
+      setSlots(result);
+    } catch (err: any) {
+      setSlotsError(err?.message ?? "Failed to load availability");
+    } finally {
+      setSlotsLoading(false);
+    }
+  };
 
-    const doBook = async (interviewAt?: string) => {
-      if (!selectedReferrer || didBook) return;
-      didBook = true;
-      if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = null; }
-      setBooked(true);
-      try {
-        await bookSlot({
-          seekerId,
-          referrerId: selectedReferrer.referrer_id,
-          jobRequirementId,
-          jobRole,
-          seekerExperience: jobExperience,
-          interviewAt,
-        });
-      } catch (err: any) {
-        console.error('[BookInterview] bookSlot failed:', err);
-        toast.error(err?.message ?? 'Failed to save booking — please contact support.');
-        setBooked(false);
-        didBook = false;
+  const handleBook = async () => {
+    if (!selectedReferrer || !pendingSlot || booking) return;
+    setBooking(true);
+    try {
+      const result = await bookCalendarSlot({
+        referrerId: selectedReferrer.referrer_id,
+        slotStart: pendingSlot,
+        jobRequirementId,
+        jobRole,
+        seekerExperience: jobExperience,
+      });
+      setBooked({ interview_at: result.interview_at, meet_link: result.meet_link });
+    } catch (err: any) {
+      const msg = err?.message ?? "Failed to book slot";
+      toast.error(msg);
+      // If the slot was taken, refresh availability so the user sees the new state.
+      if (/no longer available|just booked/i.test(msg) && selectedReferrer) {
+        await loadSlots(selectedReferrer);
       }
-    };
+      setPendingSlot(null);
+    } finally {
+      setBooking(false);
+    }
+  };
 
-    const handler = async (e: MessageEvent) => {
-      // Path A — our redirect page (same origin) posts event details back.
-      if (e.data?.type === 'calendly_booked' && e.data?.data) {
-        const startTime = e.data.data.event_start_time;
-        await doBook(typeof startTime === 'string' && startTime ? startTime : undefined);
-        return;
-      }
-      // Path B — Calendly's iframe fires event_scheduled but doesn't include
-      // the time. Schedule a fallback insert in case the redirect never lands
-      // (event type misconfigured, network, popup blocker, etc.).
-      if (e.data?.event !== 'calendly.event_scheduled') return;
-      if (!selectedReferrer || didBook) return;
-      if (fallbackTimer) clearTimeout(fallbackTimer);
-      fallbackTimer = setTimeout(() => { doBook(undefined); }, 3500);
-    };
-    window.addEventListener('message', handler);
-    return () => {
-      window.removeEventListener('message', handler);
-      if (fallbackTimer) clearTimeout(fallbackTimer);
-    };
-  }, [selectedReferrer, seekerId, jobRequirementId, jobRole, jobExperience, bookSlot]);
+  // Group slots by day for display.
+  const slotsByDay = useMemo(() => {
+    const m = new Map<string, AvailableSlot[]>();
+    for (const s of slots) {
+      const k = dayKey(s.start);
+      if (!m.has(k)) m.set(k, []);
+      m.get(k)!.push(s);
+    }
+    return Array.from(m.entries()).sort(([a], [b]) => a.localeCompare(b));
+  }, [slots]);
 
   if (!isOpen) return null;
 
@@ -143,7 +146,7 @@ export const BookInterviewModal = ({
         background: "var(--surface)",
         borderRadius: 20,
         width: "100%",
-        maxWidth: 560,
+        maxWidth: 640,
         maxHeight: "90vh",
         overflowY: "auto",
         boxShadow: "0 24px 64px rgba(0,0,0,0.22)",
@@ -157,7 +160,7 @@ export const BookInterviewModal = ({
               Book an interview
             </span>
           </div>
-          <button onClick={onClose} style={{
+          <button onClick={onClose} aria-label="Close" style={{
             background: "transparent", border: "none", cursor: "pointer",
             color: "var(--ink-3)", display: "flex", padding: 4, borderRadius: 6,
           }}>
@@ -171,23 +174,39 @@ export const BookInterviewModal = ({
           </div>
         </div>
 
-        <div style={{ padding: "16px 24px 24px", display: "flex", flexDirection: "column", gap: 12 }}>
+        <div style={{ padding: "16px 24px 24px", display: "flex", flexDirection: "column", gap: 14 }}>
+          {/* === Success state =================================================== */}
           {booked ? (
-            <div style={{ textAlign: "center", padding: "40px 24px" }}>
+            <div data-testid="book-success" style={{ textAlign: "center", padding: "32px 16px" }}>
               <div style={{ fontSize: 48, marginBottom: 12 }}>✅</div>
-              <div style={{ fontSize: 16, fontWeight: 700, color: "var(--ink)", marginBottom: 8 }}>Interview booked!</div>
-              <div style={{ fontSize: 13, color: "var(--ink-3)", lineHeight: 1.6 }}>
-                You'll receive a confirmation email from Calendly with the meeting details and Google Meet link.
+              <div style={{ fontSize: 16, fontWeight: 700, color: "var(--ink)", marginBottom: 6 }}>Interview booked!</div>
+              <div style={{ fontSize: 13, color: "var(--ink-3)", marginBottom: 16, lineHeight: 1.6 }}>
+                {new Date(booked.interview_at).toLocaleString([], { dateStyle: "full", timeStyle: "short" })}
+                <br />A Google Calendar invite + Meet link has been sent to your email.
               </div>
-              <button onClick={onBooked} style={{ ...primaryBtnStyle, marginTop: 20 }}>Done</button>
+              {booked.meet_link && (
+                <a
+                  href={booked.meet_link}
+                  target="_blank"
+                  rel="noreferrer"
+                  data-testid="meet-link"
+                  style={{ ...primaryBtnStyle, textDecoration: "none", display: "inline-flex" }}
+                >
+                  Open Google Meet
+                </a>
+              )}
+              <div style={{ marginTop: 14 }}>
+                <button onClick={onBooked} style={secondaryBtnStyle}>Done</button>
+              </div>
             </div>
-          ) : loading ? (
+          ) : loadingReferrers ? (
             <div style={{ textAlign: "center", padding: "32px 0", color: "var(--ink-3)", fontSize: 14 }}>
-              <Clock size={24} style={{ opacity: 0.4, marginBottom: 8, display: "block", margin: "0 auto 8px" }} />
-              Finding available referrers…
+              <Clock size={24} style={{ opacity: 0.4, display: "block", margin: "0 auto 8px" }} />
+              Finding referrers with calendar availability…
             </div>
           ) : referrers.length === 0 ? (
-            <div className="surface-card" style={{ textAlign: "center", padding: "40px 24px" }}>
+            /* === Empty state =================================================== */
+            <div className="surface-card" data-testid="no-referrers" style={{ textAlign: "center", padding: "40px 24px" }}>
               <div style={{ opacity: 0.2, marginBottom: 12, display: "flex", justifyContent: "center" }}>
                 <Users size={40} color="var(--ink-4)" />
               </div>
@@ -195,18 +214,23 @@ export const BookInterviewModal = ({
                 No referrers available yet
               </div>
               <div style={{ fontSize: 13, color: "var(--ink-3)" }}>
-                Referrers with matching experience haven't set up availability yet. Check back soon.
+                We couldn't find referrers matching your role who have connected their calendar.
+                Check back soon.
               </div>
             </div>
           ) : (
             referrers.map((r) => {
               const isSelected = selectedReferrer?.referrer_id === r.referrer_id;
               return (
-                <div key={r.referrer_id} style={{
-                  borderRadius: 14,
-                  border: isSelected ? "1.5px solid var(--seeker)" : "1px solid var(--border-soft)",
-                  overflow: "hidden",
-                }}>
+                <div
+                  key={r.referrer_id}
+                  data-testid={`referrer-card-${r.referrer_id}`}
+                  style={{
+                    borderRadius: 14,
+                    border: isSelected ? "1.5px solid var(--seeker)" : "1px solid var(--border-soft)",
+                    overflow: "hidden",
+                  }}
+                >
                   <div style={{
                     width: "100%", background: isSelected ? "#eff6ff" : "var(--surface-2)",
                     padding: "14px 16px",
@@ -217,49 +241,111 @@ export const BookInterviewModal = ({
                         <span style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)" }}>
                           {r.referrer_name}
                         </span>
-                        {r.calendly_url ? (
-                          <span style={{
-                            fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 999,
-                            background: "var(--seeker)", color: "white", letterSpacing: "0.02em",
-                          }}>
-                            Available
-                          </span>
-                        ) : (
-                          <span style={{ fontSize: 12, color: "var(--ink-4)" }}>Not available</span>
-                        )}
                       </div>
                       <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 2 }}>
                         {roleLabel(r.referrer_role)} · {r.referrer_experience} yrs
                         {r.organization ? ` · ${r.organization}` : ""}
                       </div>
                     </div>
-                    {r.calendly_url && (
-                      <button
-                        onClick={() => setSelectedReferrer(isSelected ? null : r)}
-                        style={{
-                          display: "inline-flex", alignItems: "center",
-                          background: isSelected ? "var(--seeker)" : "transparent",
-                          color: isSelected ? "white" : "var(--seeker)",
-                          border: `1.5px solid var(--seeker)`,
-                          borderRadius: 9, padding: "0 14px", height: 32,
-                          fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
-                        }}
-                      >
-                        {isSelected ? "Close" : "Book Interview"}
-                      </button>
-                    )}
+                    <button
+                      onClick={() => (isSelected ? setSelectedReferrer(null) : loadSlots(r))}
+                      data-testid={`show-slots-${r.referrer_id}`}
+                      style={{
+                        display: "inline-flex", alignItems: "center", gap: 6,
+                        background: isSelected ? "var(--seeker)" : "transparent",
+                        color: isSelected ? "white" : "var(--seeker)",
+                        border: `1.5px solid var(--seeker)`,
+                        borderRadius: 9, padding: "0 14px", height: 32,
+                        fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
+                      }}
+                    >
+                      <Calendar size={13} />
+                      {isSelected ? "Hide slots" : "See available slots"}
+                    </button>
                   </div>
 
-                  {isSelected && r.calendly_url && (
-                    <div style={{ borderTop: "1px solid var(--border-soft)", overflow: "hidden" }}>
-                      <iframe
-                        src={`${r.calendly_url}?hide_gdpr_banner=1&primary_color=2563eb&embed_type=Inline&embed_domain=${encodeURIComponent(window.location.hostname)}&email=${encodeURIComponent(seekerEmail)}&name=${encodeURIComponent(seekerName)}&redirect_url=${encodeURIComponent(`${window.location.origin}/calendly-success.html`)}`}
-                        width="100%"
-                        height="580"
-                        frameBorder="0"
-                        title="Book a time"
-                        allow="payment"
-                      />
+                  {/* Slot grid for selected referrer */}
+                  {isSelected && (
+                    <div style={{ borderTop: "1px solid var(--border-soft)", padding: 16 }}>
+                      {slotsLoading ? (
+                        <div style={{ fontSize: 13, color: "var(--ink-3)", padding: "16px 0" }} data-testid="slots-loading">
+                          Loading availability…
+                        </div>
+                      ) : slotsError ? (
+                        <div data-testid="slots-error" style={{ fontSize: 13, color: "#dc2626", padding: 12, background: "#fee2e2", borderRadius: 8 }}>
+                          {slotsError}
+                          <button onClick={() => loadSlots(r)} style={{ ...secondaryBtnStyle, marginLeft: 8, height: 28, fontSize: 12 }}>
+                            Retry
+                          </button>
+                        </div>
+                      ) : slots.length === 0 ? (
+                        <div data-testid="no-slots" style={{ fontSize: 13, color: "var(--ink-3)", padding: "12px 0" }}>
+                          No open slots in the next 7 days. Try another referrer or check back later.
+                        </div>
+                      ) : (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                          {slotsByDay.map(([day, daySlots]) => (
+                            <div key={day}>
+                              <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--ink-3)", marginBottom: 6 }}>
+                                {fmtDay(daySlots[0].start)}
+                              </div>
+                              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                                {daySlots.map((s) => {
+                                  const isPending = pendingSlot === s.start;
+                                  return (
+                                    <button
+                                      key={s.start}
+                                      onClick={() => setPendingSlot(s.start)}
+                                      data-testid={`slot-${s.start}`}
+                                      style={{
+                                        padding: "6px 12px",
+                                        borderRadius: 8,
+                                        border: `1.5px solid ${isPending ? "var(--seeker)" : "var(--border-med)"}`,
+                                        background: isPending ? "var(--seeker)" : "var(--surface)",
+                                        color: isPending ? "white" : "var(--ink-2)",
+                                        fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
+                                      }}
+                                    >
+                                      {fmtTime(s.start)}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Confirmation footer for picked slot */}
+                      {pendingSlot && (
+                        <div
+                          data-testid="confirm-bar"
+                          style={{
+                            marginTop: 14, padding: "10px 12px",
+                            border: "1px solid var(--seeker)", background: "#eff6ff",
+                            borderRadius: 10,
+                            display: "flex", alignItems: "center", justifyContent: "space-between",
+                            gap: 10, flexWrap: "wrap",
+                          }}
+                        >
+                          <div style={{ fontSize: 13, color: "var(--ink-2)" }}>
+                            Book <strong>{fmtTime(pendingSlot)}</strong> on <strong>{fmtDay(pendingSlot)}</strong>?
+                          </div>
+                          <div style={{ display: "flex", gap: 6 }}>
+                            <button onClick={() => setPendingSlot(null)} style={{ ...secondaryBtnStyle, height: 32, fontSize: 12 }}>
+                              Cancel
+                            </button>
+                            <button
+                              onClick={handleBook}
+                              disabled={booking}
+                              data-testid="confirm-book"
+                              style={{ ...primaryBtnStyle, height: 32, fontSize: 12 }}
+                            >
+                              {booking ? "Booking…" : "Confirm booking"}
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -269,6 +355,6 @@ export const BookInterviewModal = ({
         </div>
       </div>
     </div>,
-    document.body
+    document.body,
   );
 };

@@ -550,7 +550,7 @@ test("20. Empty states render when there is no data", async ({ page }) => {
 
 const mockEligibleReferrers = [
   {
-    referrer_id: "ref-calendly-1",
+    referrer_id: "ref-cal-1",
     referrer_name: "Priya Singh",
     referrer_role: "software-developer",
     referrer_experience: 6,
@@ -558,10 +558,18 @@ const mockEligibleReferrers = [
   },
 ];
 
-async function interceptSupabaseWithBooking(page: Page) {
+// Mock slots — a Tuesday with 3 free morning slots. These ISO timestamps are
+// well in the future so they remain valid as time passes.
+const FAR_FUTURE_DAY = "2030-06-04"; // Tuesday
+const mockSlots = [
+  { start: `${FAR_FUTURE_DAY}T04:30:00.000Z`, end: `${FAR_FUTURE_DAY}T05:30:00.000Z` }, // 10:00 IST
+  { start: `${FAR_FUTURE_DAY}T05:30:00.000Z`, end: `${FAR_FUTURE_DAY}T06:30:00.000Z` }, // 11:00 IST
+  { start: `${FAR_FUTURE_DAY}T06:30:00.000Z`, end: `${FAR_FUTURE_DAY}T07:30:00.000Z` }, // 12:00 IST
+];
+
+async function interceptSupabaseWithBooking(page: Page, opts: { slotsResponse?: { slots: any[] } | { error: string; status: number }; bookResponse?: { ok: boolean; body: any; status: number }; capture?: { lastBookBody?: any } } = {}) {
   await interceptSupabase(page);
 
-  // Override RPC to handle find_eligible_referrers_for_job
   await page.route(`${SUPABASE}/rest/v1/rpc/find_eligible_referrers_for_job`, async (route) => {
     await route.fulfill({
       status: 200, contentType: "application/json",
@@ -569,16 +577,36 @@ async function interceptSupabaseWithBooking(page: Page) {
     });
   });
 
-  // Override profiles to handle calendly_url lookups (returns array when select=id,calendly_url)
+  // Edge Function: list-slots
+  await page.route(`${SUPABASE}/functions/v1/gcal-list-slots`, async (route) => {
+    const r = opts.slotsResponse;
+    if (r && "error" in r) {
+      await route.fulfill({ status: r.status, contentType: "application/json", body: JSON.stringify({ error: r.error }) });
+    } else {
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(r ?? { slots: mockSlots }) });
+    }
+  });
+
+  // Edge Function: book-slot
+  await page.route(`${SUPABASE}/functions/v1/gcal-book-slot`, async (route) => {
+    if (opts.capture) opts.capture.lastBookBody = JSON.parse(route.request().postData() ?? "{}");
+    const r = opts.bookResponse;
+    if (r && !r.ok) {
+      await route.fulfill({ status: r.status, contentType: "application/json", body: JSON.stringify(r.body) });
+    } else {
+      const body = r?.body ?? {
+        referral_request_id: "rr-new",
+        interview_at: mockSlots[0].start,
+        meet_link: "https://meet.google.com/abc-defg-hij",
+        event_id: "gcal-event-1",
+      };
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
+    }
+  });
+
   await page.route(`${SUPABASE}/rest/v1/profiles*`, async (route) => {
     const url = route.request().url();
-    if (url.includes("calendly_url") && url.includes("in.")) {
-      await route.fulfill({
-        status: 200, contentType: "application/json",
-        body: JSON.stringify([{ id: "ref-calendly-1", calendly_url: "https://calendly.com/test-referrer/30min" }]),
-      });
-    } else if (url.includes("ref-calendly-1") || (url.includes("in.") && url.includes("name"))) {
-      // seeker profile lookup in referrer dashboard
+    if (url.includes("ref-cal-1") || (url.includes("in.") && url.includes("name"))) {
       await route.fulfill({
         status: 200, contentType: "application/json",
         body: JSON.stringify([{ id: "mock-user-id", name: "Aria Sharma", avatar_url: null }]),
@@ -600,28 +628,25 @@ test("21. Book Interview — modal opens with eligible referrer shown", async ({
   await sidebarBtn(page, "My Requirements").click();
   await page.waitForTimeout(400);
 
-  // Click "Book an interview" on the first job card
   await page.locator("button:has-text('Book an interview')").first().click();
   await page.waitForTimeout(600);
   await screenshot(page, "21a-book-interview-modal-opening");
 
-  // Modal header visible
   await expect(page.locator("text=Book an interview").first()).toBeVisible();
 
-  // Wait for eligible referrers to load
   await page.waitForTimeout(1200);
   await screenshot(page, "21b-book-interview-referrer-listed");
 
-  // Referrer name and Available badge should be visible
   await expect(page.locator("text=Priya Singh")).toBeVisible();
-  await expect(page.locator("text=Available").first()).toBeVisible();
   await expect(page.locator("text=Google")).toBeVisible();
-  console.log("✅ 21. Book Interview modal opens with eligible referrers");
+  // "See available slots" CTA replaces the old Calendly "Book Interview" button.
+  await expect(page.locator("button:has-text('See available slots')")).toBeVisible();
+  console.log("✅ 21. Book Interview modal opens with eligible referrer");
 });
 
-// ── 22. Book Interview — selecting referrer shows Calendly iframe ─────────
+// ── 22. Book Interview — selecting referrer fetches and shows slot grid ───
 
-test("22. Book Interview — clicking referrer shows Calendly iframe", async ({ page }) => {
+test("22. Book Interview — clicking referrer shows slot grid grouped by day", async ({ page }) => {
   await interceptSupabaseWithBooking(page);
   await page.goto(BASE);
   await injectMockSession(page);
@@ -632,43 +657,24 @@ test("22. Book Interview — clicking referrer shows Calendly iframe", async ({ 
   await sidebarBtn(page, "My Requirements").click();
   await page.waitForTimeout(400);
   await page.locator("button:has-text('Book an interview')").first().click();
-  await page.waitForTimeout(1500); // wait for RPC + calendly URL fetches
+  await page.waitForTimeout(1200);
 
-  // Click "Book Interview" on the referrer
-  await page.locator("button:has-text('Book Interview')").first().click();
+  await page.locator("[data-testid='show-slots-ref-cal-1']").click();
   await page.waitForTimeout(800);
-  await screenshot(page, "22-book-interview-iframe");
+  await screenshot(page, "22-book-interview-slot-grid");
 
-  // Iframe should be present with calendly URL
-  const iframe = page.locator("iframe[title='Book a time']");
-  await expect(iframe).toBeVisible();
-  const src = await iframe.getAttribute("src");
-  expect(src).toContain("calendly.com/test-referrer/30min");
-  expect(src).toContain("email=test%40vouchme.io");
-  expect(src).toContain("name=Aria");
-  console.log("✅ 22. Book Interview iframe loads with pre-filled email/name");
+  // All 3 slot chips should be visible.
+  await expect(page.locator(`[data-testid='slot-${mockSlots[0].start}']`)).toBeVisible();
+  await expect(page.locator(`[data-testid='slot-${mockSlots[1].start}']`)).toBeVisible();
+  await expect(page.locator(`[data-testid='slot-${mockSlots[2].start}']`)).toBeVisible();
+  console.log("✅ 22. Book Interview slot grid renders all available slots");
 });
 
-// ── 23. Book Interview — redirect-page postMessage auto-fills interview_at ─
+// ── 23. Book Interview — picking + confirming a slot calls book-slot ──────
 
-test("23. Book Interview — calendly_booked redirect saves interview_at automatically", async ({ page }) => {
-  let insertBody: any = null;
-
-  await interceptSupabaseWithBooking(page);
-
-  await page.route(`${SUPABASE}/rest/v1/referral_requests*`, async (route) => {
-    if (route.request().method() === "POST") {
-      insertBody = JSON.parse(route.request().postData() ?? "{}");
-      expect(insertBody.seeker_id).toBe("mock-user-id");
-      expect(insertBody.referrer_id).toBe("ref-calendly-1");
-      expect(insertBody.status).toBe("pending");
-      expect(insertBody.job_role).toBe("software-developer");
-      await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({}) });
-    } else {
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(allRequests) });
-    }
-  });
-
+test("23. Book Interview — confirming a slot calls Edge Function with correct body and shows success", async ({ page }) => {
+  const capture: { lastBookBody?: any } = {};
+  await interceptSupabaseWithBooking(page, { capture });
   await page.goto(BASE);
   await injectMockSession(page);
   await setDashboardState(page, "seeker");
@@ -678,33 +684,27 @@ test("23. Book Interview — calendly_booked redirect saves interview_at automat
   await sidebarBtn(page, "My Requirements").click();
   await page.waitForTimeout(400);
   await page.locator("button:has-text('Book an interview')").first().click();
-  await page.waitForTimeout(1500);
-  await page.locator("button:has-text('Book Interview')").first().click();
-  await page.waitForTimeout(800);
+  await page.waitForTimeout(1200);
+  await page.locator("[data-testid='show-slots-ref-cal-1']").click();
+  await page.waitForTimeout(600);
 
-  await expect(page.locator("iframe[title='Book a time']")).toBeVisible();
-
-  // Simulate the postMessage that calendly-success.html sends back after the
-  // Calendly redirect lands on our origin with event_start_time in the URL.
-  const eventStart = "2026-05-15T10:00:00.000000Z";
-  await page.evaluate((startTime) => {
-    window.postMessage({
-      type: "calendly_booked",
-      data: {
-        event_start_time: startTime,
-        event_end_time: "2026-05-15T10:30:00.000000Z",
-        invitee_email: "test@example.com",
-      },
-    }, "*");
-  }, eventStart);
-
-  await page.waitForTimeout(1500);
+  // Pick the first slot and confirm.
+  await page.locator(`[data-testid='slot-${mockSlots[0].start}']`).click();
+  await expect(page.locator("[data-testid='confirm-bar']")).toBeVisible();
+  await page.locator("[data-testid='confirm-book']").click();
+  await page.waitForTimeout(900);
   await screenshot(page, "23-book-interview-success");
 
-  await expect(page.locator("text=Interview booked!")).toBeVisible();
-  expect(insertBody).not.toBeNull();
-  expect(insertBody.interview_at).toBe(eventStart);
-  console.log("✅ 23. calendly_booked redirect → bookSlot insert with interview_at");
+  // Edge Function was called with the right slot + job context.
+  expect(capture.lastBookBody).toBeTruthy();
+  expect(capture.lastBookBody.referrer_id).toBe("ref-cal-1");
+  expect(capture.lastBookBody.slot_start).toBe(mockSlots[0].start);
+  expect(capture.lastBookBody.job_role).toBe("software-developer");
+
+  // Success state with Google Meet link.
+  await expect(page.locator("[data-testid='book-success']")).toBeVisible();
+  await expect(page.locator("[data-testid='meet-link']")).toHaveAttribute("href", /meet\.google\.com/);
+  console.log("✅ 23. Booking confirms via Edge Function and shows Meet link");
 });
 
 // ── 24. Referrer Upcoming Interviews — shows pending requests ─────────────
@@ -766,12 +766,10 @@ test("26. Book Interview — X button closes the modal", async ({ page }) => {
   await page.waitForTimeout(600);
 
   await expect(page.locator("text=Book an interview").first()).toBeVisible();
-  // Click the X close button
-  await page.locator("button[style*='transparent']").filter({ has: page.locator("svg") }).last().click();
+  await page.locator("button[aria-label='Close']").click();
   await page.waitForTimeout(400);
   await screenshot(page, "26-book-interview-modal-closed");
 
-  // Modal gone, back to jobs tab
   await expect(page.locator("text=Software Developer").first()).toBeVisible();
   console.log("✅ 26. Book Interview modal closes on X");
 });
@@ -1097,22 +1095,10 @@ test("37. Algorithm — blended score (65% param + 35% inclination) ranks candid
   console.log("✅ 37. Algorithm ranking: strong_yes lifts score, strong_no depresses it");
 });
 
-// ── 38. Book Interview — fallback when redirect doesn't fire ─────────────
+// ── 38. Book Interview — slot list empty state ────────────────────────────
 
-test("38. Book Interview — event_scheduled fallback inserts without interview_at", async ({ page }) => {
-  let insertBody: any = null;
-
-  await interceptSupabaseWithBooking(page);
-
-  await page.route(`${SUPABASE}/rest/v1/referral_requests*`, async (route) => {
-    if (route.request().method() === "POST") {
-      insertBody = JSON.parse(route.request().postData() ?? "{}");
-      await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({}) });
-    } else {
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(allRequests) });
-    }
-  });
-
+test("38. Book Interview — empty slot list shows 'No open slots' message", async ({ page }) => {
+  await interceptSupabaseWithBooking(page, { slotsResponse: { slots: [] } });
   await page.goto(BASE);
   await injectMockSession(page);
   await setDashboardState(page, "seeker");
@@ -1122,46 +1108,20 @@ test("38. Book Interview — event_scheduled fallback inserts without interview_
   await sidebarBtn(page, "My Requirements").click();
   await page.waitForTimeout(400);
   await page.locator("button:has-text('Book an interview')").first().click();
-  await page.waitForTimeout(1500);
-  await page.locator("button:has-text('Book Interview')").first().click();
-  await page.waitForTimeout(800);
+  await page.waitForTimeout(1200);
+  await page.locator("[data-testid='show-slots-ref-cal-1']").click();
+  await page.waitForTimeout(600);
 
-  await expect(page.locator("iframe[title='Book a time']")).toBeVisible();
-
-  // Only event_scheduled fires (no redirect postMessage). Fallback timer (3.5s)
-  // should still create the booking, but without interview_at — the referrer
-  // can set it manually.
-  await page.evaluate(() => {
-    window.postMessage({ event: "calendly.event_scheduled" }, "*");
-  });
-
-  await page.waitForTimeout(4500);
-  await screenshot(page, "38-book-fallback");
-
-  await expect(page.locator("text=Interview booked!")).toBeVisible();
-  expect(insertBody).not.toBeNull();
-  expect(insertBody.interview_at).toBeUndefined();
-  console.log("✅ 38. event_scheduled fallback fires bookSlot without interview_at");
+  await expect(page.locator("[data-testid='no-slots']")).toBeVisible();
+  console.log("✅ 38. Empty slot list shows guidance message");
 });
 
-// ── 39. Book Interview — redirect race wins over fallback ─────────────────
+// ── 39. Book Interview — race condition: slot taken by someone else ───────
 
-test("39. Book Interview — redirect arrives before fallback, only one insert", async ({ page }) => {
-  let insertCount = 0;
-  let insertBody: any = null;
-
-  await interceptSupabaseWithBooking(page);
-
-  await page.route(`${SUPABASE}/rest/v1/referral_requests*`, async (route) => {
-    if (route.request().method() === "POST") {
-      insertCount++;
-      insertBody = JSON.parse(route.request().postData() ?? "{}");
-      await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({}) });
-    } else {
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(allRequests) });
-    }
+test("39. Book Interview — Edge Function 409 shows 'just booked' error and refreshes slots", async ({ page }) => {
+  await interceptSupabaseWithBooking(page, {
+    bookResponse: { ok: false, status: 409, body: { error: "Slot was just booked by someone else" } },
   });
-
   await page.goto(BASE);
   await injectMockSession(page);
   await setDashboardState(page, "seeker");
@@ -1171,32 +1131,96 @@ test("39. Book Interview — redirect arrives before fallback, only one insert",
   await sidebarBtn(page, "My Requirements").click();
   await page.waitForTimeout(400);
   await page.locator("button:has-text('Book an interview')").first().click();
-  await page.waitForTimeout(1500);
-  await page.locator("button:has-text('Book Interview')").first().click();
+  await page.waitForTimeout(1200);
+  await page.locator("[data-testid='show-slots-ref-cal-1']").click();
+  await page.waitForTimeout(600);
+  await page.locator(`[data-testid='slot-${mockSlots[0].start}']`).click();
+  await page.locator("[data-testid='confirm-book']").click();
+  await page.waitForTimeout(900);
+
+  await expect(page.locator("text=just booked")).toBeVisible();
+  // Confirm bar dismissed — user can pick another slot.
+  await expect(page.locator("[data-testid='confirm-bar']")).not.toBeVisible();
+  console.log("✅ 39. Race-condition 409 surfaces error and resets pending slot");
+});
+
+// ── 40. Slot-fetch error shows retry button ───────────────────────────────
+
+test("40. Book Interview — slot fetch error renders retry", async ({ page }) => {
+  await interceptSupabaseWithBooking(page, {
+    slotsResponse: { error: "Calendar disconnected", status: 410 },
+  });
+  await page.goto(BASE);
+  await injectMockSession(page);
+  await setDashboardState(page, "seeker");
+  await page.reload();
+  await page.waitForSelector("text=Overview", { timeout: 10000 });
+
+  await sidebarBtn(page, "My Requirements").click();
+  await page.waitForTimeout(400);
+  await page.locator("button:has-text('Book an interview')").first().click();
+  await page.waitForTimeout(1200);
+  await page.locator("[data-testid='show-slots-ref-cal-1']").click();
+  await page.waitForTimeout(600);
+
+  await expect(page.locator("[data-testid='slots-error']")).toBeVisible();
+  await expect(page.locator("[data-testid='slots-error']")).toContainText("Calendar disconnected");
+  console.log("✅ 40. Slot fetch error shows error + retry button");
+});
+
+// ── 41. Referrer Availability panel — not connected state ─────────────────
+
+test("41. Referrer Availability — shows 'Not connected' when has_calendar_connected is false", async ({ page }) => {
+  await interceptSupabase(page);
+  await page.route(`${SUPABASE}/rest/v1/rpc/has_calendar_connected`, async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(false) });
+  });
+  await page.goto(BASE);
+  await injectMockSession(page);
+  await setDashboardState(page, "referrer");
+  await page.reload();
+  await page.waitForSelector("text=Overview", { timeout: 10000 });
   await page.waitForTimeout(800);
 
-  await expect(page.locator("iframe[title='Book a time']")).toBeVisible();
+  await expect(page.locator("[data-testid='calendar-connection']")).toContainText("Not connected");
+  await expect(page.locator("button:has-text('Connect Google Calendar')")).toBeVisible();
+  console.log("✅ 41. Availability panel shows 'Not connected' empty state");
+});
 
-  // event_scheduled fires first (starts 3.5s fallback timer), then redirect
-  // arrives shortly after with the time. Only ONE insert should happen, with
-  // interview_at populated.
-  await page.evaluate(() => {
-    window.postMessage({ event: "calendly.event_scheduled" }, "*");
+// ── 42. Referrer Availability — connected state + working hours save ──────
+
+test("42. Referrer Availability — connected state + save sends PATCH with all fields", async ({ page }) => {
+  let patchBody: any = null;
+  await interceptSupabase(page);
+  await page.route(`${SUPABASE}/rest/v1/rpc/has_calendar_connected`, async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(true) });
   });
-  await page.waitForTimeout(300);
-  const startTime = "2026-06-01T14:30:00.000000Z";
-  await page.evaluate((t) => {
-    window.postMessage({
-      type: "calendly_booked",
-      data: { event_start_time: t },
-    }, "*");
-  }, startTime);
+  await page.route(`${SUPABASE}/rest/v1/profiles*`, async (route) => {
+    if (route.request().method() === "PATCH") {
+      patchBody = JSON.parse(route.request().postData() ?? "{}");
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([{}]) });
+      return;
+    }
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(mockProfile) });
+  });
 
-  // Wait long enough for the fallback timer to have fired if it weren't cancelled.
-  await page.waitForTimeout(4500);
+  await page.goto(BASE);
+  await injectMockSession(page);
+  await setDashboardState(page, "referrer");
+  await page.reload();
+  await page.waitForSelector("text=Overview", { timeout: 10000 });
+  await page.waitForTimeout(800);
 
-  await expect(page.locator("text=Interview booked!")).toBeVisible();
-  expect(insertCount).toBe(1);
-  expect(insertBody.interview_at).toBe(startTime);
-  console.log("✅ 39. Redirect cancels fallback — single insert with interview_at");
+  await expect(page.locator("[data-testid='calendar-connection']")).toContainText("Google Calendar connected");
+
+  // Toggle Saturday on, change end-time to 18:00, save.
+  await page.locator("[data-testid='availability-day-6']").click();
+  await page.locator("[data-testid='availability-end']").fill("18:00");
+  await page.locator("[data-testid='availability-save']").click();
+  await page.waitForTimeout(800);
+
+  expect(patchBody).toBeTruthy();
+  expect(patchBody.availability_end).toBe("18:00");
+  expect(patchBody.availability_days).toContain(6);
+  console.log("✅ 42. Availability save sends PATCH with updated fields");
 });

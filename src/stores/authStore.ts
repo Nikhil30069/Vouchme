@@ -18,6 +18,10 @@ export interface User {
   current_organization?: string | null;
   onboarded: boolean;
   calendly_url?: string | null;
+  availability_start?: string;
+  availability_end?: string;
+  availability_days?: number[];
+  availability_timezone?: string;
   createdAt?: string | null;
   is_admin?: boolean;
 }
@@ -28,16 +32,25 @@ interface AuthState {
   user: User | null;
   activeRole: AppRole | null;
   status: AuthStatus;
+  calendarConnected: boolean;
 
   setUser: (user: User | null) => void;
   setActiveRole: (role: AppRole) => void;
   refreshProfile: () => Promise<void>;
   initializeAuth: () => Promise<() => void>;
   signInWithGoogle: () => Promise<void>;
+  connectGoogleCalendar: () => Promise<void>;
+  refreshCalendarConnected: () => Promise<void>;
   signOut: () => Promise<void>;
   updateUser: (data: Partial<User>) => void;
   addRoleToUser: (role: AppRole, additionalData?: Record<string, unknown>) => Promise<void>;
 }
+
+// sessionStorage flag — set right before the Google Calendar OAuth flow,
+// read once on return. Prevents the refresh_token returned by a normal
+// basic-scope login from being mistakenly stored as "calendar connected".
+const PENDING_CAL_KEY = "pending_calendar_connect";
+const CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.events";
 
 const computeStatus = (user: User | null, activeRole: AppRole | null): AuthStatus => {
   if (!user) return "unauthenticated";
@@ -59,6 +72,10 @@ const profileToUser = (row: any): User => ({
   current_organization: row.current_organization ?? null,
   onboarded: !!row.onboarded,
   calendly_url: row.calendly_url ?? null,
+  availability_start: row.availability_start ?? "10:00",
+  availability_end: row.availability_end ?? "19:00",
+  availability_days: row.availability_days ?? [1, 2, 3, 4, 5],
+  availability_timezone: row.availability_timezone ?? "Asia/Kolkata",
   createdAt: row.created_at ?? null,
   is_admin: !!row.is_admin,
 });
@@ -69,6 +86,7 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       activeRole: null,
       status: "loading",
+      calendarConnected: false,
 
       setUser: (user) =>
         set((state) => ({
@@ -131,13 +149,36 @@ export const useAuthStore = create<AuthState>()(
 
       initializeAuth: async () => {
         await get().refreshProfile();
-        const { data: listener } = supabase.auth.onAuthStateChange(async (event) => {
+        await get().refreshCalendarConnected();
+        const { data: listener } = supabase.auth.onAuthStateChange(async (event, session) => {
           if (event === "SIGNED_OUT") {
-            set({ user: null, activeRole: null, status: "unauthenticated" });
+            set({ user: null, activeRole: null, status: "unauthenticated", calendarConnected: false });
             return;
           }
           if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED" || event === "INITIAL_SESSION") {
+            // If the user just completed the "Connect Google Calendar" flow,
+            // the OAuth callback session carries provider_refresh_token. Persist
+            // it so our Edge Functions can mint fresh access tokens later.
+            const pending = typeof window !== "undefined" && sessionStorage.getItem(PENDING_CAL_KEY) === "1";
+            const refreshToken = (session as any)?.provider_refresh_token as string | undefined;
+            if (pending && refreshToken && session?.user?.id) {
+              sessionStorage.removeItem(PENDING_CAL_KEY);
+              const { error } = await supabase
+                .from("oauth_credentials")
+                .upsert(
+                  {
+                    user_id: session.user.id,
+                    provider: "google",
+                    refresh_token: refreshToken,
+                    scopes: CALENDAR_SCOPE,
+                    updated_at: new Date().toISOString(),
+                  },
+                  { onConflict: "user_id,provider" }
+                );
+              if (error) console.error("[auth] failed to persist calendar refresh token:", error);
+            }
             await get().refreshProfile();
+            await get().refreshCalendarConnected();
           }
         });
         return () => listener.subscription.unsubscribe();
@@ -153,9 +194,48 @@ export const useAuthStore = create<AuthState>()(
         if (error) throw error;
       },
 
+      connectGoogleCalendar: async () => {
+        // Flag this redirect so the SIGNED_IN handler knows to persist the
+        // refresh token. Cleared on return (whether success or failure).
+        sessionStorage.setItem(PENDING_CAL_KEY, "1");
+        const { error } = await supabase.auth.signInWithOAuth({
+          provider: "google",
+          options: {
+            redirectTo: window.location.origin,
+            scopes: CALENDAR_SCOPE,
+            queryParams: {
+              // Required for Google to return a refresh_token.
+              access_type: "offline",
+              // Force re-consent so we always get a refresh_token, even for
+              // users who previously signed in without the calendar scope.
+              prompt: "consent",
+            },
+          },
+        });
+        if (error) {
+          sessionStorage.removeItem(PENDING_CAL_KEY);
+          throw error;
+        }
+      },
+
+      refreshCalendarConnected: async () => {
+        const user = get().user;
+        if (!user) {
+          set({ calendarConnected: false });
+          return;
+        }
+        const { data, error } = await supabase.rpc("has_calendar_connected", { uid: user.id });
+        if (error) {
+          // RPC might not exist on older schemas — fall back to "not connected".
+          set({ calendarConnected: false });
+          return;
+        }
+        set({ calendarConnected: !!data });
+      },
+
       signOut: async () => {
         await supabase.auth.signOut();
-        set({ user: null, activeRole: null, status: "unauthenticated" });
+        set({ user: null, activeRole: null, status: "unauthenticated", calendarConnected: false });
       },
 
       addRoleToUser: async (role, additionalData) => {

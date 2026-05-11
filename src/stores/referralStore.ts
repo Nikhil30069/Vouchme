@@ -18,6 +18,18 @@ export interface ReferrerSlot {
   created_at: string;
 }
 
+export interface AvailableSlot {
+  start: string; // ISO UTC
+  end: string;   // ISO UTC
+}
+
+export interface BookCalendarSlotResult {
+  referral_request_id: string;
+  interview_at: string;
+  meet_link: string | null;
+  event_id: string;
+}
+
 interface EligibleReferrer {
   referrer_id: string;
   referrer_name: string;
@@ -74,8 +86,24 @@ interface ReferralState {
     seekerExperience: number;
     interviewAt?: string;
   }) => Promise<void>;
+  /** Deprecated. Use fetchAvailableSlots instead. Kept temporarily for legacy callers. */
   saveCalendlyUrl: (userId: string, url: string) => Promise<void>;
+  /** Deprecated. */
   fetchCalendlyUrls: (userIds: string[]) => Promise<Record<string, string | null>>;
+  fetchAvailableSlots: (referrerId: string, daysAhead?: number) => Promise<AvailableSlot[]>;
+  bookCalendarSlot: (data: {
+    referrerId: string;
+    slotStart: string;
+    jobRequirementId: string;
+    jobRole: string;
+    seekerExperience: number;
+  }) => Promise<BookCalendarSlotResult>;
+  saveAvailability: (userId: string, availability: {
+    start: string;
+    end: string;
+    days: number[];
+    timezone: string;
+  }) => Promise<void>;
   setInterviewAt: (requestId: string, interviewAt: string) => Promise<void>;
   submitHireInclination: (requestId: string, inclination: string) => Promise<void>;
 
@@ -724,6 +752,67 @@ export const useReferralStore = create<ReferralState>((set, get) => ({
     const map: Record<string, string | null> = {};
     (data || []).forEach((p: any) => { map[p.id] = p.calendly_url; });
     return map;
+  },
+
+  fetchAvailableSlots: async (referrerId, daysAhead = 7) => {
+    const { data, error } = await supabase.functions.invoke<{ slots: AvailableSlot[] }>(
+      'gcal-list-slots',
+      { body: { referrer_id: referrerId, days_ahead: daysAhead } },
+    );
+    if (error) {
+      const ctx = (error as any).context;
+      let serverMsg: string | undefined;
+      try {
+        const parsed = ctx && typeof ctx === 'object' && 'json' in ctx ? await (ctx as Response).json() : null;
+        serverMsg = parsed?.error;
+      } catch { /* noop */ }
+      throw new Error(serverMsg ?? error.message ?? 'Failed to load available slots');
+    }
+    return data?.slots ?? [];
+  },
+
+  bookCalendarSlot: async ({ referrerId, slotStart, jobRequirementId, jobRole, seekerExperience }) => {
+    const { data, error } = await supabase.functions.invoke<BookCalendarSlotResult>(
+      'gcal-book-slot',
+      {
+        body: {
+          referrer_id: referrerId,
+          slot_start: slotStart,
+          job_requirement_id: jobRequirementId,
+          job_role: jobRole,
+          seeker_experience: seekerExperience,
+        },
+      },
+    );
+    if (error) {
+      const ctx = (error as any).context;
+      let serverMsg: string | undefined;
+      try {
+        const parsed = ctx && typeof ctx === 'object' && 'json' in ctx ? await (ctx as Response).json() : null;
+        serverMsg = parsed?.error;
+      } catch { /* noop */ }
+      throw new Error(serverMsg ?? error.message ?? 'Failed to book slot');
+    }
+    if (!data) throw new Error('Booking returned no data');
+
+    // Refresh local cache so the new request appears in dashboards.
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.user?.id) await get().fetchReferralRequests(session.user.id);
+    return data;
+  },
+
+  saveAvailability: async (userId, availability) => {
+    const { error } = await supabase
+      .from('profiles')
+      .update({
+        availability_start: availability.start,
+        availability_end: availability.end,
+        availability_days: availability.days,
+        availability_timezone: availability.timezone,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', userId);
+    if (error) throw error;
   },
 
   setInterviewAt: async (requestId, interviewAt) => {

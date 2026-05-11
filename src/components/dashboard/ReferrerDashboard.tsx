@@ -9,6 +9,7 @@ import {
   HeroBanner, StatCard, EmptyState,
   primaryBtnStyle, secondaryBtnStyle, badgeStyle,
 } from "./SeekerDashboard";
+import { AvailabilityPanel } from "./AvailabilityPanel";
 
 interface ReferrerDashboardProps {
   user: User;
@@ -21,7 +22,7 @@ const roleLabel = (value: string) => JOB_ROLES.find((r) => r.value === value)?.l
 export const ReferrerDashboard = ({ user, activeTab, onTabChange }: ReferrerDashboardProps) => {
   const {
     fetchReferralRequests, fetchScoringParameters, createScore,
-    referralRequests, scoringParameters, saveCalendlyUrl,
+    referralRequests, scoringParameters,
     setInterviewAt, submitHireInclination,
   } = useReferralStore();
   const [scores, setScores] = useState<Record<string, Record<string, number | "">>>({});
@@ -31,33 +32,7 @@ export const ReferrerDashboard = ({ user, activeTab, onTabChange }: ReferrerDash
   const [interviewTimeInputs, setInterviewTimeInputs] = useState<Record<string, string>>({});
   const [savingInterviewTime, setSavingInterviewTime] = useState<Set<string>>(new Set());
 
-  // Read directly from the store so the embed updates immediately when the
-  // CalendlySetupModal saves and calls updateUser — no page refresh needed.
-  const activeCalendlyUrl = useAuthStore((s) => s.user?.calendly_url || "");
-  const updateUser = useAuthStore((s) => s.updateUser);
-  const [showEditCalendly, setShowEditCalendly] = useState(false);
-  const [editCalendlyUrl, setEditCalendlyUrl] = useState(user.calendly_url || "");
-  const [savingCalendly, setSavingCalendly] = useState(false);
-  const [savedCalendly, setSavedCalendly] = useState(false);
-
   const [seekerProfiles, setSeekerProfiles] = useState<Record<string, { name: string; avatar_url: string | null }>>({});
-
-  useEffect(() => {
-    if (!activeCalendlyUrl) return;
-    if (!document.querySelector('script[src*="calendly"]')) {
-      const link = document.createElement("link");
-      link.href = "https://assets.calendly.com/assets/external/widget.css";
-      link.rel = "stylesheet";
-      document.head.appendChild(link);
-      const script = document.createElement("script");
-      script.src = "https://assets.calendly.com/assets/external/widget.js";
-      script.async = true;
-      document.head.appendChild(script);
-      script.onload = () => (window as any).Calendly?.initInlineWidgets();
-    } else {
-      setTimeout(() => (window as any).Calendly?.initInlineWidgets(), 100);
-    }
-  }, [activeCalendlyUrl]);
 
   useEffect(() => {
     fetchReferralRequests(user.id);
@@ -89,24 +64,6 @@ export const ReferrerDashboard = ({ user, activeTab, onTabChange }: ReferrerDash
         setSeekerProfiles(map);
       });
   }, [scheduledSorted.length]);
-
-  const handleSaveEditCalendlyUrl = async () => {
-    const trimmed = editCalendlyUrl.trim();
-    if (!trimmed) return;
-    setSavingCalendly(true);
-    try {
-      await saveCalendlyUrl(user.id, trimmed);
-      updateUser({ calendly_url: trimmed });
-      setSavedCalendly(true);
-      setShowEditCalendly(false);
-      setTimeout(() => setSavedCalendly(false), 2000);
-      toast.success("Calendly link updated!");
-    } catch (err: any) {
-      toast.error(err?.message ?? "Failed to save Calendly link");
-    } finally {
-      setSavingCalendly(false);
-    }
-  };
 
   const canScore = (req: { interview_at?: string | null }): boolean => {
     if (!req.interview_at) return false;
@@ -204,7 +161,7 @@ export const ReferrerDashboard = ({ user, activeTab, onTabChange }: ReferrerDash
           </div>
           {scheduledSorted.length === 0 ? (
             <div style={{ fontSize: 13, color: "var(--ink-3)", lineHeight: 1.6 }}>
-              No upcoming interviews yet. Seekers will appear here once they book via your Calendly link.
+              No upcoming interviews yet. Once a seeker books a slot from your calendar, they'll appear here.
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -292,7 +249,9 @@ export const ReferrerDashboard = ({ user, activeTab, onTabChange }: ReferrerDash
                       </div>
                     </div>
                     <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 10, fontStyle: "italic" }}>
-                      Meeting details sent to your email by Calendly
+                      {(r as any).meet_link
+                        ? <>Google Meet invite sent. <a href={(r as any).meet_link} target="_blank" rel="noreferrer" style={{ color: "var(--seeker)" }}>Join</a></>
+                        : "Meeting details sent to your email."}
                     </div>
                   </div>
                 );
@@ -301,74 +260,7 @@ export const ReferrerDashboard = ({ user, activeTab, onTabChange }: ReferrerDash
           )}
         </div>
 
-        <div style={{ background: "var(--surface)", border: "1px solid var(--border-soft)", borderRadius: 14, padding: 20 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: "var(--ink)", marginBottom: 16, letterSpacing: "-0.02em" }}>
-            My Interview Calendar
-          </div>
-          {activeCalendlyUrl ? (
-            <>
-              <div style={{ borderRadius: 12, overflow: "hidden", border: "1px solid var(--border-soft)" }}>
-                <div
-                  className="calendly-inline-widget"
-                  data-url={`${activeCalendlyUrl}?hide_gdpr_banner=1&hide_event_type_details=0`}
-                  style={{ minWidth: 300, height: 660 }}
-                />
-              </div>
-              <div style={{ marginTop: 12 }}>
-                {!showEditCalendly ? (
-                  <button
-                    onClick={() => { setEditCalendlyUrl(activeCalendlyUrl); setShowEditCalendly(true); }}
-                    style={{
-                      background: "none",
-                      border: "none",
-                      cursor: "pointer",
-                      fontSize: 13,
-                      color: "var(--ink-3)",
-                      padding: 0,
-                      fontFamily: "inherit",
-                      textDecoration: "underline",
-                      textDecorationStyle: "dotted",
-                      textUnderlineOffset: 3,
-                    }}
-                  >
-                    Update Calendly link →
-                  </button>
-                ) : (
-                  <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
-                    <input
-                      type="url"
-                      placeholder="https://calendly.com/your-name/event-name"
-                      value={editCalendlyUrl}
-                      onChange={(e) => setEditCalendlyUrl(e.target.value)}
-                      style={{
-                        flex: 1, height: 40, padding: "0 12px", borderRadius: 10,
-                        border: "1px solid var(--border-med)", fontSize: 14,
-                        color: "var(--ink)", background: "var(--surface)", fontFamily: "inherit", outline: "none",
-                      }}
-                    />
-                    <button
-                      onClick={handleSaveEditCalendlyUrl}
-                      disabled={savingCalendly}
-                      style={{ ...primaryBtnStyle, padding: "0 16px", height: 40, borderRadius: 10, gap: 6, flexShrink: 0 }}
-                    >
-                      {savingCalendly ? "Saving…" : savedCalendly ? "✓ Saved!" : "Save"}
-                    </button>
-                    <button
-                      onClick={() => setShowEditCalendly(false)}
-                      style={{ ...secondaryBtnStyle, height: 40, borderRadius: 10, flexShrink: 0 }}
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                )}
-              </div>
-            </>
-          ) : (
-            <div style={{ fontSize: 13, color: "var(--ink-3)", lineHeight: 1.6 }}>
-              No Calendly link connected yet. Complete the setup to show your calendar here.
-            </div>
-          )}
-        </div>
+        <AvailabilityPanel />
       </div>
     );
   }

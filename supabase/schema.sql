@@ -749,3 +749,125 @@ GRANT EXECUTE ON FUNCTION public.get_leaderboard(INTEGER) TO authenticated;
 
 -- Add Calendly URL to referrer profiles
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS calendly_url TEXT;
+
+-- ===========================================================================
+-- Google Calendar native booking
+--
+-- Replaces the third-party Calendly flow. The referrer's Google Calendar is
+-- treated as the source of truth: we query FreeBusy on demand to compute open
+-- 1-hour slots, and we create the actual meeting event on their calendar.
+-- ===========================================================================
+
+-- ---------------------------------------------------------------------
+-- oauth_credentials
+-- Stores a user's provider refresh token (Google).
+-- RLS is enabled and intentionally has NO SELECT policy: clients can
+-- never read the refresh_token. Only Edge Functions (service_role) can.
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.oauth_credentials (
+  user_id        UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  provider       TEXT NOT NULL DEFAULT 'google',
+  refresh_token  TEXT NOT NULL,
+  scopes         TEXT,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (user_id, provider)
+);
+
+ALTER TABLE public.oauth_credentials ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "oauth_insert_own" ON public.oauth_credentials;
+CREATE POLICY "oauth_insert_own" ON public.oauth_credentials
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "oauth_update_own" ON public.oauth_credentials;
+CREATE POLICY "oauth_update_own" ON public.oauth_credentials
+  FOR UPDATE USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "oauth_delete_own" ON public.oauth_credentials;
+CREATE POLICY "oauth_delete_own" ON public.oauth_credentials
+  FOR DELETE USING (auth.uid() = user_id);
+
+-- ---------------------------------------------------------------------
+-- Public predicate for "does this user have a working Google Calendar
+-- token?" — used by find_eligible_referrers_for_job to filter referrers
+-- who haven't connected yet.
+-- ---------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.has_calendar_connected(uid UUID)
+RETURNS BOOLEAN
+LANGUAGE sql SECURITY DEFINER STABLE
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.oauth_credentials
+    WHERE user_id = uid AND provider = 'google'
+  );
+$$;
+GRANT EXECUTE ON FUNCTION public.has_calendar_connected(UUID) TO authenticated;
+
+-- ---------------------------------------------------------------------
+-- Referrer availability window. Stored in IANA timezone; we generate
+-- slots in this window per day and exclude days not in availability_days.
+-- ISO weekday: Mon = 1 … Sun = 7.
+-- ---------------------------------------------------------------------
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS availability_start    TIME      NOT NULL DEFAULT '10:00',
+  ADD COLUMN IF NOT EXISTS availability_end      TIME      NOT NULL DEFAULT '19:00',
+  ADD COLUMN IF NOT EXISTS availability_days     INTEGER[] NOT NULL DEFAULT ARRAY[1,2,3,4,5],
+  ADD COLUMN IF NOT EXISTS availability_timezone TEXT      NOT NULL DEFAULT 'Asia/Kolkata';
+
+-- ---------------------------------------------------------------------
+-- Track the Google Calendar event we created for this booking so we can
+-- cancel or reschedule it later if needed.
+-- ---------------------------------------------------------------------
+ALTER TABLE public.referral_requests
+  ADD COLUMN IF NOT EXISTS google_event_id TEXT;
+
+-- ---------------------------------------------------------------------
+-- Prevent the same referrer being booked twice at the same time. We
+-- intentionally allow rebooks if the original was rejected.
+-- ---------------------------------------------------------------------
+CREATE UNIQUE INDEX IF NOT EXISTS uniq_rr_referrer_interview_active
+  ON public.referral_requests (referrer_id, interview_at)
+  WHERE interview_at IS NOT NULL AND status <> 'rejected';
+
+-- ---------------------------------------------------------------------
+-- Replace Calendly check with calendar-connected check in eligibility.
+-- ---------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.find_eligible_referrers_for_job(job_requirement_uuid UUID)
+RETURNS TABLE (
+  referrer_id UUID,
+  referrer_name TEXT,
+  referrer_role TEXT,
+  referrer_experience INTEGER,
+  organization TEXT,
+  total_experience_years INTEGER,
+  organizations TEXT[],
+  current_organization TEXT
+) AS $$
+BEGIN
+  RETURN QUERY
+  SELECT
+    p.id,
+    p.name,
+    (p."workExperience"->>'role')::TEXT,
+    p.total_experience_years,
+    COALESCE(p.current_organization, (p."workExperience"->>'organization'))::TEXT,
+    p.total_experience_years,
+    p.organizations,
+    p.current_organization
+  FROM public.profiles p
+  CROSS JOIN public.job_requirements seeker_jr
+  WHERE seeker_jr.id = job_requirement_uuid
+    AND 'referrer' = ANY (p.roles)
+    AND public.has_calendar_connected(p.id)
+    AND (p."workExperience"->>'role') IS NOT NULL
+    AND lower(trim(p."workExperience"->>'role')) = lower(trim(seeker_jr.role))
+    AND p.total_experience_years > seeker_jr."yearsOfExperience"
+    AND NOT EXISTS (
+      SELECT 1 FROM public.referral_requests rr
+      WHERE rr.seeker_id = seeker_jr."userId"
+        AND rr.referrer_id = p.id
+        AND rr.job_requirement_id = job_requirement_uuid
+    );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;

@@ -5,7 +5,6 @@ import { DashboardLayout, type SideItem } from "./DashboardLayout";
 import { SeekerDashboard } from "./SeekerDashboard";
 import { RecruiterDashboard } from "./RecruiterDashboard";
 import { ReferrerDashboard } from "./ReferrerDashboard";
-import { CalendlySetupModal } from "./CalendlySetupModal";
 import { AdminTestManager } from "@/components/admin/AdminTestManager";
 
 const roleTabItems: Record<AppRole, SideItem[]> = {
@@ -30,31 +29,16 @@ const adminItem: SideItem = { id: "admin-tests", label: "Test Manager", icon: Se
 export const Dashboard = () => {
   const user = useAuthStore((s) => s.user);
   const activeRole = useAuthStore((s) => s.activeRole);
-  const updateUser = useAuthStore((s) => s.updateUser);
   const [activeTab, setActiveTab] = useState("overview");
-  const [showCalendlySetup, setShowCalendlySetup] = useState(false);
 
   useEffect(() => {
     setActiveTab("overview");
   }, [activeRole]);
 
-  useEffect(() => {
-    if (activeRole === "referrer" && user && !user.calendly_url) {
-      setShowCalendlySetup(true);
-    } else {
-      setShowCalendlySetup(false);
-    }
-  }, [activeRole, user]);
-
   if (!user || !activeRole) return null;
 
   const baseSideItems = roleTabItems[activeRole] ?? [];
   const sideItems = user.is_admin ? [...baseSideItems, adminItem] : baseSideItems;
-
-  const handleCalendlyComplete = (url: string) => {
-    updateUser({ calendly_url: url });
-    setShowCalendlySetup(false);
-  };
 
   const renderDashboard = () => {
     if (activeTab === "admin-tests") return <AdminTestManager />;
@@ -77,9 +61,6 @@ export const Dashboard = () => {
       onTabChange={setActiveTab}
     >
       {renderDashboard()}
-      {showCalendlySetup && (
-        <CalendlySetupModal user={user} onComplete={handleCalendlyComplete} />
-      )}
     </DashboardLayout>
   );
 };

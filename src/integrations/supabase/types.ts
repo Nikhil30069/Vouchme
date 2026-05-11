@@ -25,6 +25,10 @@ export type Database = {
           current_organization: string | null;
           onboarded: boolean;
           calendly_url: string | null;
+          availability_start: string;
+          availability_end: string;
+          availability_days: number[];
+          availability_timezone: string;
           created_at: string | null;
           updated_at: string | null;
         };
@@ -41,10 +45,34 @@ export type Database = {
           current_organization?: string | null;
           onboarded?: boolean;
           calendly_url?: string | null;
+          availability_start?: string;
+          availability_end?: string;
+          availability_days?: number[];
+          availability_timezone?: string;
           created_at?: string | null;
           updated_at?: string | null;
         };
         Update: Partial<Database["public"]["Tables"]["profiles"]["Insert"]>;
+        Relationships: [];
+      };
+      oauth_credentials: {
+        Row: {
+          user_id: string;
+          provider: string;
+          refresh_token: string;
+          scopes: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          user_id: string;
+          provider?: string;
+          refresh_token: string;
+          scopes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["oauth_credentials"]["Insert"]>;
         Relationships: [];
       };
       job_requirements: {
@@ -127,6 +155,7 @@ export type Database = {
           meet_link: string | null;
           hire_inclination: string | null;
           resume_url: string | null;
+          google_event_id: string | null;
           created_at: string | null;
           updated_at: string | null;
         };
@@ -143,6 +172,7 @@ export type Database = {
           meet_link?: string | null;
           hire_inclination?: string | null;
           resume_url?: string | null;
+          google_event_id?: string | null;
           created_at?: string | null;
           updated_at?: string | null;
         };
